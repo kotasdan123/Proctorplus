@@ -6,11 +6,11 @@
       "passcode": "PASS99",
       "title": "General Assessment & Knowledge Check",
       "description": "Standard examination room. Multiple examinees can join simultaneously with the room number and passcode.",
-      "formUrl": "https://docs.google.com/forms/d/e/1FAIpQLSf_EXAMPLE_FORM/viewform?embedded=true",
+      "formUrl": "https://docs.google.com/forms/d/e/1FAIpQLSeK35oh4wlzl4-EFWxgU1H5BGgQu02UOhgK392l8CIY8Cho0A/viewform?usp=header",
       "antiCheat": true,
-      "maxViolations": 3,
+      "maxViolations": 5,
       "timerEnabled": true,
-      "durationMinutes": 45,
+      "durationMinutes": 120,
       "startAt": "",
       "endAt": "",
       "active": true,
@@ -18,8 +18,57 @@
       "createdBy": "admin"
     }
   },
-  "attempts": {},
-  "violations": {},
+  "attempts": {
+    "attempt-mu40xhu5-9kp2q6": {
+      "id": "attempt-mu40xhu5-9kp2q6",
+      "examId": "sample-room-1",
+      "examTitle": "General Assessment & Knowledge Check",
+      "roomNumber": "101202",
+      "participantId": "EXM-O0GEA",
+      "participantName": "DAN",
+      "startedAt": 1789558507661,
+      "endedAt": 1789556542785,
+      "status": "Completed",
+      "violations": 3,
+      "flagged": false,
+      "durationSeconds": 79
+    }
+  },
+  "violations": {
+    "vio-mu40xpd4-91dv": {
+      "id": "vio-mu40xpd4-91dv",
+      "attemptId": "attempt-mu40xhu5-9kp2q6",
+      "examId": "sample-room-1",
+      "examTitle": "General Assessment & Knowledge Check",
+      "roomNumber": "101202",
+      "participantId": "EXM-O0GEA",
+      "number": 1,
+      "reason": "Examination window lost focus.",
+      "timestamp": 1789558517417
+    },
+    "vio-mu40xtf6-qfmn": {
+      "id": "vio-mu40xtf6-qfmn",
+      "attemptId": "attempt-mu40xhu5-9kp2q6",
+      "examId": "sample-room-1",
+      "examTitle": "General Assessment & Knowledge Check",
+      "roomNumber": "101202",
+      "participantId": "EXM-O0GEA",
+      "number": 2,
+      "reason": "Examination window lost focus.",
+      "timestamp": 1789558522674
+    },
+    "vio-mu40z1m3-vtfv": {
+      "id": "vio-mu40z1m3-vtfv",
+      "attemptId": "attempt-mu40xhu5-9kp2q6",
+      "examId": "sample-room-1",
+      "examTitle": "General Assessment & Knowledge Check",
+      "roomNumber": "101202",
+      "participantId": "EXM-O0GEA",
+      "number": 3,
+      "reason": "Exited full-screen examination mode.",
+      "timestamp": 1789558579947
+    }
+  },
   "config": {
     "syncMode": "server",
     "firebase": {

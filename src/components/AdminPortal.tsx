@@ -29,10 +29,13 @@ import {
   Search,
   Filter,
   RefreshCw,
-  Eye
+  Eye,
+  Lock,
+  KeyRound
 } from 'lucide-react';
 import { RoomModal } from './RoomModal';
 import { FirebaseConfigModal } from './FirebaseConfigModal';
+import { updateAdminCredentials } from '../lib/api';
 
 interface AdminPortalProps {
   adminSession: AdminSession;
@@ -74,6 +77,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [pwChangeLoading, setPwChangeLoading] = useState(false);
+  const [pwChangeMsg, setPwChangeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwChangeMsg(null);
+    if (!newPw) {
+      setPwChangeMsg({ type: 'error', text: 'New password cannot be empty.' });
+      return;
+    }
+    if (newPw !== confirmPw) {
+      setPwChangeMsg({ type: 'error', text: 'New passwords do not match.' });
+      return;
+    }
+    setPwChangeLoading(true);
+    try {
+      await updateAdminCredentials({
+        currentPassword: currentPw,
+        newPassword: newPw
+      });
+      setPwChangeMsg({ type: 'success', text: 'Administrator password updated successfully!' });
+      setCurrentPw('');
+      setNewPw('');
+      setConfirmPw('');
+    } catch (err: any) {
+      setPwChangeMsg({ type: 'error', text: err.message || 'Failed to update password' });
+    } finally {
+      setPwChangeLoading(false);
+    }
+  };
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -991,13 +1028,86 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               </div>
 
-              {/* Admin Credentials info */}
-              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
-                <h3 className="text-base font-bold text-white">Administrator Account</h3>
+              {/* Admin Credentials & Password Change */}
+              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-5">
+                <div>
+                  <h3 className="text-base font-bold text-white">Administrator Account &amp; Security</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Manage administrator credentials and update password</p>
+                </div>
+
                 <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 text-xs space-y-1 font-mono text-slate-300">
                   <div>Username: <span className="text-white font-bold">{adminSession.adminUsername}</span></div>
-                  <div>Role: System Administrator</div>
+                  <div>Role: <span className="text-indigo-400 font-semibold">System Administrator</span></div>
                 </div>
+
+                {/* Change Password Form */}
+                <form onSubmit={handleChangePassword} className="p-5 rounded-2xl bg-slate-950/40 border border-slate-800 space-y-4">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
+                    <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Change Admin Password</span>
+                  </div>
+
+                  {pwChangeMsg && (
+                    <div
+                      className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                        pwChangeMsg.type === 'success'
+                          ? 'bg-emerald-950/60 border border-emerald-800 text-emerald-300'
+                          : 'bg-red-950/60 border border-red-800 text-red-300'
+                      }`}
+                    >
+                      {pwChangeMsg.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      )}
+                      <span>{pwChangeMsg.text}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Current Password</label>
+                      <input
+                        type="password"
+                        value={currentPw}
+                        onChange={(e) => setCurrentPw(e.target.value)}
+                        placeholder="Current password"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">New Password</label>
+                      <input
+                        type="password"
+                        value={newPw}
+                        onChange={(e) => setNewPw(e.target.value)}
+                        placeholder="New password"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={confirmPw}
+                        onChange={(e) => setConfirmPw(e.target.value)}
+                        placeholder="Repeat new password"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={pwChangeLoading || !newPw}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>{pwChangeLoading ? 'Updating...' : 'Update Password'}</span>
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

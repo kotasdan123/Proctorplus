@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Lock, User, AlertCircle } from 'lucide-react';
+import { X, ShieldCheck, Lock, User, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { adminLogin } from '../lib/api';
 
 interface AdminLoginModalProps {
@@ -8,18 +8,28 @@ interface AdminLoginModalProps {
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onClose, onSuccess }) => {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('123admin');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const cleanUser = username.trim();
+    const cleanPass = password.trim();
+
+    if (!cleanUser || !cleanPass) {
+      setError('Please enter both administrator username and password.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const res = await adminLogin(username.trim(), password);
+      const res = await adminLogin(cleanUser, cleanPass);
       if (res.success) {
         onSuccess(res.admin);
         onClose();
@@ -57,7 +67,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onClose, onSuc
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4" autoComplete="off">
           {error && (
             <div className="flex items-center gap-2 p-3 text-xs text-red-300 bg-red-950/60 border border-red-800 rounded-xl">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -74,9 +84,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onClose, onSuc
               <input
                 type="text"
                 required
+                autoComplete="off"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
+                placeholder="Username"
                 className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
               />
             </div>
@@ -89,16 +100,22 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onClose, onSuc
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
-                className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
               />
-            </div>
-            <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>Default credentials: admin / 123admin</span>
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
