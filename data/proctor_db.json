@@ -1,29 +1,12 @@
 {
   "rooms": {
-    "sample-room-1": {
-      "id": "sample-room-1",
-      "roomNumber": "101202",
-      "passcode": "PASS99",
-      "title": "Updated Title On PC A",
-      "description": "Standard examination room. Multiple examinees can join simultaneously with the room number and passcode.",
+    "room-mu43rdgo-uazpf": {
+      "id": "room-mu43rdgo-uazpf",
+      "roomNumber": "412880",
+      "passcode": "SCL9XF",
+      "title": "TETS",
+      "description": "TTEST",
       "formUrl": "https://docs.google.com/forms/d/e/1FAIpQLSeK35oh4wlzl4-EFWxgU1H5BGgQu02UOhgK392l8CIY8Cho0A/viewform?usp=header",
-      "antiCheat": true,
-      "maxViolations": 5,
-      "timerEnabled": true,
-      "durationMinutes": 120,
-      "startAt": "",
-      "endAt": "",
-      "active": true,
-      "createdAt": 1789554730797,
-      "createdBy": "admin"
-    },
-    "room-mu42yke0-hr857": {
-      "id": "room-mu42yke0-hr857",
-      "roomNumber": "TEST88",
-      "passcode": "123456",
-      "title": "Test Physics Exam",
-      "description": "",
-      "formUrl": "https://docs.google.com/forms/d/e/123/viewform",
       "antiCheat": true,
       "maxViolations": 3,
       "timerEnabled": true,
@@ -31,7 +14,24 @@
       "startAt": "",
       "endAt": "",
       "active": true,
-      "createdAt": 1789561916856,
+      "createdAt": 1789563260904,
+      "createdBy": "admin"
+    },
+    "room-mu43rhvv-832qr": {
+      "id": "room-mu43rhvv-832qr",
+      "roomNumber": "101",
+      "passcode": "123456",
+      "title": "TEST",
+      "description": "Standard examination room. Multiple examinees can join simultaneously with the room number and passcode.",
+      "formUrl": "https://docs.google.com/forms/d/e/1FAIpQLSeK35oh4wlzl4-EFWxgU1H5BGgQu02UOhgK392l8CIY8Cho0A/viewform?usp=header",
+      "antiCheat": true,
+      "maxViolations": 3,
+      "timerEnabled": true,
+      "durationMinutes": 120,
+      "startAt": "",
+      "endAt": "",
+      "active": true,
+      "createdAt": 1789563266635,
       "createdBy": "admin"
     }
   },
@@ -84,24 +84,6 @@
       "number": 3,
       "reason": "Exited full-screen examination mode.",
       "timestamp": 1789558579947
-    }
-  },
-  "config": {
-    "syncMode": "firebase",
-    "firebase": {
-      "apiKey": "",
-      "authDomain": "",
-      "databaseURL": "",
-      "projectId": "",
-      "storageBucket": "",
-      "messagingSenderId": "",
-      "appId": "",
-      "enabled": true
-    },
-    "admin": {
-      "username": "admin",
-      "passwordHash": "123admin",
-      "name": "System Administrator"
     }
   },
   "sheetData": {
@@ -1090,5 +1072,23 @@
         ""
       ]
     ]
+  },
+  "config": {
+    "syncMode": "firebase",
+    "firebase": {
+      "apiKey": "",
+      "authDomain": "",
+      "databaseURL": "",
+      "projectId": "",
+      "storageBucket": "",
+      "messagingSenderId": "",
+      "appId": "",
+      "enabled": true
+    },
+    "admin": {
+      "username": "admin",
+      "passwordHash": "123admin",
+      "name": "System Administrator"
+    }
   }
 }
