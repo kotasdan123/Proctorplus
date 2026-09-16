@@ -63,10 +63,18 @@ interface ViolationRecord {
   timestamp: number;
 }
 
+interface SheetRecord {
+  url: string;
+  lastSyncedAt: number | null;
+  headers: string[];
+  rows: string[][];
+}
+
 interface DBState {
   rooms: Record<string, RoomRecord>;
   attempts: Record<string, AttemptRecord>;
   violations: Record<string, ViolationRecord>;
+  sheetData?: SheetRecord;
   config: {
     syncMode: 'server' | 'firebase';
     firebase: {
@@ -605,6 +613,212 @@ app.post('/api/violations', (req: Request, res: Response) => {
   saveDatabase(db);
   broadcastUpdate('violation_logged', { violation: newViolation, attempt, ejected: isFlagged });
   res.status(201).json({ violation: newViolation, attempt, ejected: isFlagged });
+});
+
+// ---------------------------------------------------------------
+// GOOGLE SHEET DATA BOARD ENDPOINTS
+// ---------------------------------------------------------------
+
+const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1Fa_x25xdW0hQP_zWNavmRLaHmpyTHpgUObczmcx-ETE/edit?usp=sharing';
+
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && nextChar === '"') {
+        currentCell += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        currentCell += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        currentRow.push(currentCell.trim());
+        currentCell = '';
+      } else if (char === '\r') {
+        if (nextChar === '\n') i++;
+        currentRow.push(currentCell.trim());
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+      } else if (char === '\n') {
+        currentRow.push(currentCell.trim());
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+      } else {
+        currentCell += char;
+      }
+    }
+  }
+
+  if (currentCell.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentCell.trim());
+    rows.push(currentRow);
+  }
+
+  return rows.filter((r) => r.some((c) => c !== ''));
+}
+
+async function fetchGoogleSheetCSV(sheetUrl: string): Promise<{ headers: string[]; rows: string[][] }> {
+  let exportUrl = sheetUrl;
+  const match = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match && match[1]) {
+    exportUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
+  }
+  const response = await fetch(exportUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Google Sheet: ${response.status} ${response.statusText}`);
+  }
+  const csvText = await response.text();
+  const parsed = parseCSV(csvText);
+  if (!parsed || parsed.length === 0) {
+    return { headers: [], rows: [] };
+  }
+  const headers = parsed[0];
+  const rows = parsed.slice(1);
+  return { headers, rows };
+}
+
+// Get Sheet Data (cached or live fetched)
+app.get('/api/sheet', async (req: Request, res: Response) => {
+  try {
+    const force = req.query.force === 'true';
+    if (!force && db.sheetData && db.sheetData.headers && db.sheetData.headers.length > 0) {
+      return res.json(db.sheetData);
+    }
+
+    const url = db.sheetData?.url || DEFAULT_SHEET_URL;
+    const { headers, rows } = await fetchGoogleSheetCSV(url);
+    db.sheetData = {
+      url,
+      lastSyncedAt: Date.now(),
+      headers,
+      rows
+    };
+    saveDatabase(db);
+    res.json(db.sheetData);
+  } catch (err: any) {
+    console.error('Error fetching sheet data:', err);
+    if (db.sheetData) {
+      return res.json(db.sheetData);
+    }
+    res.status(500).json({ error: err.message || 'Failed to fetch Google Sheet data' });
+  }
+});
+
+// Force Sync from Google Sheet
+app.post('/api/sheet/sync', async (req: Request, res: Response) => {
+  try {
+    const url = req.body?.url || db.sheetData?.url || DEFAULT_SHEET_URL;
+    const { headers, rows } = await fetchGoogleSheetCSV(url);
+    db.sheetData = {
+      url,
+      lastSyncedAt: Date.now(),
+      headers,
+      rows
+    };
+    saveDatabase(db);
+    broadcastUpdate('sheet_updated', db.sheetData);
+    res.json({ success: true, sheetData: db.sheetData });
+  } catch (err: any) {
+    console.error('Error syncing Google Sheet:', err);
+    res.status(500).json({ error: err.message || 'Failed to sync Google Sheet' });
+  }
+});
+
+// Save whole table modifications from Data Board
+app.post('/api/sheet/save', (req: Request, res: Response) => {
+  const { headers, rows, url } = req.body;
+  if (!Array.isArray(rows)) {
+    return res.status(400).json({ error: 'Rows array required' });
+  }
+  if (!db.sheetData) {
+    db.sheetData = {
+      url: url || DEFAULT_SHEET_URL,
+      lastSyncedAt: Date.now(),
+      headers: headers || [],
+      rows: []
+    };
+  }
+  if (Array.isArray(headers) && headers.length > 0) {
+    db.sheetData.headers = headers;
+  }
+  db.sheetData.rows = rows;
+  if (url) db.sheetData.url = url;
+  saveDatabase(db);
+  broadcastUpdate('sheet_updated', db.sheetData);
+  res.json({ success: true, sheetData: db.sheetData });
+});
+
+// Update a single cell in the data board
+app.post('/api/sheet/cell', (req: Request, res: Response) => {
+  const { rowIndex, colIndex, value } = req.body;
+  if (typeof rowIndex !== 'number' || typeof colIndex !== 'number' || value === undefined) {
+    return res.status(400).json({ error: 'rowIndex, colIndex, and value required' });
+  }
+  if (!db.sheetData || !db.sheetData.rows) {
+    return res.status(404).json({ error: 'Sheet data not loaded yet' });
+  }
+  if (rowIndex < 0 || rowIndex >= db.sheetData.rows.length) {
+    return res.status(400).json({ error: 'Invalid rowIndex' });
+  }
+  const row = [...db.sheetData.rows[rowIndex]];
+  while (row.length <= colIndex) {
+    row.push('');
+  }
+  row[colIndex] = String(value);
+  db.sheetData.rows[rowIndex] = row;
+  saveDatabase(db);
+  broadcastUpdate('sheet_cell_updated', { rowIndex, colIndex, value });
+  res.json({ success: true, row });
+});
+
+// Add a row to the data board
+app.post('/api/sheet/row', (req: Request, res: Response) => {
+  const { row, index } = req.body;
+  if (!Array.isArray(row)) {
+    return res.status(400).json({ error: 'Row array required' });
+  }
+  if (!db.sheetData) {
+    db.sheetData = {
+      url: DEFAULT_SHEET_URL,
+      lastSyncedAt: Date.now(),
+      headers: [],
+      rows: []
+    };
+  }
+  if (typeof index === 'number' && index >= 0 && index <= db.sheetData.rows.length) {
+    db.sheetData.rows.splice(index, 0, row);
+  } else {
+    db.sheetData.rows.unshift(row);
+  }
+  saveDatabase(db);
+  broadcastUpdate('sheet_updated', db.sheetData);
+  res.status(201).json({ success: true, rows: db.sheetData.rows });
+});
+
+// Delete a row from the data board
+app.delete('/api/sheet/row/:index', (req: Request, res: Response) => {
+  const index = parseInt(req.params.index, 10);
+  if (isNaN(index) || !db.sheetData || !db.sheetData.rows || index < 0 || index >= db.sheetData.rows.length) {
+    return res.status(400).json({ error: 'Invalid row index' });
+  }
+  const removed = db.sheetData.rows.splice(index, 1);
+  saveDatabase(db);
+  broadcastUpdate('sheet_updated', db.sheetData);
+  res.json({ success: true, removedRow: removed[0], remainingRows: db.sheetData.rows.length });
 });
 
 // ---------------------------------------------------------------

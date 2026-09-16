@@ -1,4 +1,4 @@
-import { ExamRoom, ExamAttempt, SecurityViolation, SystemConfig, FirebaseConfig } from '../types';
+import { ExamRoom, ExamAttempt, SecurityViolation, SystemConfig, FirebaseConfig, SheetData } from '../types';
 
 const BASE_URL = '';
 
@@ -670,4 +670,68 @@ export function subscribeToEvents(onUpdate: (event: any) => void): () => void {
       eventSource = null;
     }
   };
+}
+
+// ---------------------------------------------------------------
+// GOOGLE SHEET DATA BOARD CLIENT API
+// ---------------------------------------------------------------
+
+export async function fetchSheetData(force = false): Promise<SheetData> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/sheet${force ? '?force=true' : ''}`);
+    if (!res.ok) throw new Error(`Failed to fetch sheet data: ${res.statusText}`);
+    return await res.json();
+  } catch (err) {
+    console.error('fetchSheetData error:', err);
+    throw err;
+  }
+}
+
+export async function syncSheetData(url?: string): Promise<SheetData> {
+  const res = await fetch(`${BASE_URL}/api/sheet/sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url })
+  });
+  if (!res.ok) throw new Error(`Failed to sync sheet: ${res.statusText}`);
+  const data = await res.json();
+  return data.sheetData;
+}
+
+export async function saveSheetData(payload: { headers?: string[]; rows: string[][]; url?: string }): Promise<SheetData> {
+  const res = await fetch(`${BASE_URL}/api/sheet/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error(`Failed to save sheet: ${res.statusText}`);
+  const data = await res.json();
+  return data.sheetData;
+}
+
+export async function updateSheetCell(rowIndex: number, colIndex: number, value: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/sheet/cell`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rowIndex, colIndex, value })
+  });
+  if (!res.ok) throw new Error(`Failed to update cell: ${res.statusText}`);
+}
+
+export async function addSheetRow(row: string[], index?: number): Promise<string[][]> {
+  const res = await fetch(`${BASE_URL}/api/sheet/row`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ row, index })
+  });
+  if (!res.ok) throw new Error(`Failed to add row: ${res.statusText}`);
+  const data = await res.json();
+  return data.rows;
+}
+
+export async function deleteSheetRow(index: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/sheet/row/${index}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) throw new Error(`Failed to delete row: ${res.statusText}`);
 }

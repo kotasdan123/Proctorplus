@@ -31,10 +31,12 @@ import {
   RefreshCw,
   Eye,
   Lock,
-  KeyRound
+  KeyRound,
+  Table
 } from 'lucide-react';
 import { RoomModal } from './RoomModal';
 import { FirebaseConfigModal } from './FirebaseConfigModal';
+import { SheetBoard } from './SheetBoard';
 import { updateAdminCredentials } from '../lib/api';
 
 interface AdminPortalProps {
@@ -65,7 +67,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onConfigUpdated
 }) => {
   const [currentPage, setCurrentPage] = useState<
-    'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings'
+    'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings' | 'sheet'
   >('dashboard');
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -211,6 +213,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             <button
               type="button"
+              onClick={() => setCurrentPage('sheet')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                currentPage === 'sheet'
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Table className="w-4 h-4 text-emerald-400" />
+              <span>Sheet</span>
+              <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-950/60 text-emerald-400 font-bold border border-emerald-800/60">
+                Data Board
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setCurrentPage('violations')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'violations'
@@ -292,13 +310,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <option value="dashboard">Dashboard</option>
                 <option value="rooms">Rooms &amp; Exams ({rooms.length})</option>
                 <option value="submissions">Submissions ({attempts.length})</option>
+                <option value="sheet">Sheet (Data Board)</option>
                 <option value="violations">Security Events ({violations.length})</option>
                 <option value="analytics">Analytics</option>
                 <option value="settings">Settings &amp; Firebase</option>
               </select>
             </div>
             <h2 className="text-base font-bold text-white capitalize hidden sm:block">
-              {currentPage === 'settings' ? 'System Settings & Firebase' : currentPage}
+              {currentPage === 'settings'
+                ? 'System Settings & Firebase'
+                : currentPage === 'sheet'
+                ? 'Google Sheet — Editable Data Board'
+                : currentPage}
             </h2>
           </div>
 
@@ -1148,6 +1171,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Google Sheet Data Board Page */}
+          {currentPage === 'sheet' && <SheetBoard />}
         </main>
       </div>
 

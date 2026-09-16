@@ -82,3 +82,11 @@ export interface AdminSession {
 }
 
 export type UserSession = ParticipantSession | AdminSession | null;
+
+export interface SheetData {
+  url: string;
+  lastSyncedAt: number | null;
+  headers: string[];
+  rows: string[][];
+  hasUnsavedEdits?: boolean;
+}
