@@ -49,9 +49,10 @@ export default function App() {
   const [currentRoom, setCurrentRoom] = useState<ExamRoom | null>(null);
 
   const [completedResult, setCompletedResult] = useState<{
-    status: 'Completed' | 'Time Expired';
+    status: 'Completed' | 'Time Expired' | 'Terminated';
     violations: number;
     durationSeconds: number;
+    terminationReason?: string;
   } | null>(null);
 
   const [adminLoginOpen, setAdminLoginOpen] = useState(false);
@@ -148,9 +149,10 @@ export default function App() {
   };
 
   const handleExamFinish = (result: {
-    status: 'Completed' | 'Time Expired';
+    status: 'Completed' | 'Time Expired' | 'Terminated';
     violations: number;
     durationSeconds: number;
+    terminationReason?: string;
   }) => {
     setActiveAttempt(null);
     setCompletedResult(result);

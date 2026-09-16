@@ -6,10 +6,20 @@ import { recordViolation, updateAttempt } from '../lib/api';
 interface LiveExamViewProps {
   room: ExamRoom;
   attempt: ExamAttempt;
-  onFinish: (result: { status: 'Completed' | 'Time Expired'; violations: number; durationSeconds: number }) => void;
+  onFinish: (result: {
+    status: 'Completed' | 'Time Expired' | 'Terminated';
+    violations: number;
+    durationSeconds: number;
+    terminationReason?: string;
+  }) => void;
 }
 
 export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFinish }) => {
+  const effectiveMaxViolations = Math.max(
+    1,
+    Number(room.maxViolations) || Number(attempt.maxViolations) || 5
+  );
+
   const [secondsRemaining, setSecondsRemaining] = useState<number>(
     room.timerEnabled ? room.durationMinutes * 60 : 0
   );
@@ -18,10 +28,12 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
     show: boolean;
     reason: string;
     flagged: boolean;
+    ejected: boolean;
   }>({
     show: false,
     reason: '',
-    flagged: false
+    flagged: false,
+    ejected: false
   });
 
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
@@ -73,7 +85,7 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
     }
   }, []);
 
-  // Handler to register a proctor security violation
+  // Handler to register a proctor security violation & auto-eject when limit is reached
   const handleViolation = useCallback(async (reason: string) => {
     if (isFinishedRef.current || !room.antiCheat) return;
     const now = Date.now();
@@ -84,13 +96,44 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
     lastViolationTimeRef.current = now;
 
     const nextCount = violationsCount + 1;
-    const isFlagged = nextCount >= room.maxViolations;
+    const isEjected = nextCount >= effectiveMaxViolations;
     setViolationsCount(nextCount);
 
+    if (isEjected) {
+      // Examinee exceeded limit -> Terminate and eject!
+      isFinishedRef.current = true;
+      const durationSeconds = Math.max(0, Math.round((Date.now() - startTimeRef.current) / 1000));
+
+      setViolationOverlay({
+        show: true,
+        reason,
+        flagged: true,
+        ejected: true
+      });
+
+      try {
+        await recordViolation(attempt.id, reason);
+        await updateAttempt(attempt.id, {
+          status: 'Terminated',
+          endedAt: Date.now(),
+          durationSeconds,
+          violations: nextCount,
+          flagged: true
+        });
+      } catch (err) {
+        console.error('Failed to log ejection to server:', err);
+      }
+
+      await exitFullscreen();
+      return;
+    }
+
+    // Normal non-ejection warning
     setViolationOverlay({
       show: true,
       reason,
-      flagged: isFlagged
+      flagged: false,
+      ejected: false
     });
 
     try {
@@ -98,11 +141,11 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
     } catch (err) {
       console.error('Failed to log violation to server:', err);
     }
-  }, [room.antiCheat, room.maxViolations, attempt.id, violationsCount]);
+  }, [room.antiCheat, effectiveMaxViolations, attempt.id, violationsCount, exitFullscreen]);
 
   // Handle final submission
-  const handleCompleteExam = useCallback(async (status: 'Completed' | 'Time Expired') => {
-    if (isFinishedRef.current) return;
+  const handleCompleteExam = useCallback(async (status: 'Completed' | 'Time Expired' | 'Terminated', reason?: string) => {
+    if (isFinishedRef.current && status !== 'Terminated') return;
     isFinishedRef.current = true;
 
     const durationSeconds = Math.max(0, Math.round((Date.now() - startTimeRef.current) / 1000));
@@ -113,15 +156,16 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
         status,
         endedAt: Date.now(),
         durationSeconds,
-        violations: violationsCount
+        violations: violationsCount,
+        flagged: status === 'Terminated' || violationsCount >= effectiveMaxViolations
       });
     } catch (err) {
       console.error('Error submitting exam:', err);
     }
 
     await exitFullscreen();
-    onFinish({ status, violations: violationsCount, durationSeconds });
-  }, [attempt.id, violationsCount, onFinish, exitFullscreen]);
+    onFinish({ status, violations: violationsCount, durationSeconds, terminationReason: reason });
+  }, [attempt.id, violationsCount, effectiveMaxViolations, onFinish, exitFullscreen]);
 
   // Request fullscreen on start
   useEffect(() => {
@@ -287,14 +331,14 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
           {/* Violations Count */}
           {room.antiCheat && (
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold ${
-              violationsCount >= room.maxViolations
+              violationsCount >= effectiveMaxViolations
                 ? 'bg-red-950/70 border-red-700 text-red-400'
                 : violationsCount > 0
                 ? 'bg-amber-950/70 border-amber-700 text-amber-300'
                 : 'bg-slate-800/80 border-slate-700 text-slate-300'
             }`}>
               <ShieldAlert className="w-3.5 h-3.5" />
-              <span>{violationsCount} / {room.maxViolations} Violations</span>
+              <span>{violationsCount} / {effectiveMaxViolations} Violations</span>
             </div>
           )}
 
@@ -363,40 +407,64 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
       {violationOverlay.show && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="relative w-full max-w-md bg-slate-900 border-2 border-red-500 rounded-2xl p-6 text-center shadow-2xl shadow-red-500/20 animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto mb-4">
+            <div className={`w-16 h-16 rounded-2xl ${violationOverlay.ejected ? 'bg-red-500/25 border-2 border-red-500 text-red-300 animate-pulse' : 'bg-red-500/15 border border-red-500/30 text-red-400'} flex items-center justify-center mx-auto mb-4`}>
               <AlertTriangle className="w-8 h-8" />
             </div>
 
             <span className="text-[11px] font-bold tracking-wider text-red-400 uppercase">
-              SECURITY ALERT
+              {violationOverlay.ejected ? 'EXAMINATION TERMINATED • EJECTED' : 'SECURITY WARNING'}
             </span>
-            <h2 className="text-xl font-bold text-white mt-1 mb-2">Proctor Violation Detected</h2>
+            <h2 className="text-xl font-bold text-white mt-1 mb-2">
+              {violationOverlay.ejected ? 'Violation Limit Reached' : 'Proctor Violation Detected'}
+            </h2>
 
             <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-xl text-red-200 text-xs mb-4">
               {violationOverlay.reason}
             </div>
 
             <div className="p-4 bg-slate-800/60 border border-slate-700/80 rounded-xl mb-4">
-              <div className="text-3xl font-black text-red-400">{violationsCount}</div>
+              <div className="text-3xl font-black text-red-400">
+                {violationsCount} / {effectiveMaxViolations}
+              </div>
               <div className="text-xs text-slate-400 mt-0.5">
-                violation(s) recorded in this session (threshold: {room.maxViolations})
+                {violationOverlay.ejected
+                  ? `Maximum limit reached (${effectiveMaxViolations} allowed). You have been ejected.`
+                  : `Security violations recorded (Ejection threshold: ${effectiveMaxViolations})`}
               </div>
             </div>
 
             <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-              {violationOverlay.flagged
-                ? 'Your session has reached the review threshold and will be marked for administrator review. Your examination will continue normally.'
-                : 'This is a monitoring notice. Please return to the examination and re-lock full screen immediately.'}
+              {violationOverlay.ejected
+                ? 'Your examination session has been terminated and locked for proctor review due to exceeding the set violation limit. You cannot continue the exam.'
+                : `This is security warning ${violationsCount} of ${effectiveMaxViolations}. If you commit ${effectiveMaxViolations} violations, you will be immediately ejected from the exam.`}
             </p>
 
-            <button
-              type="button"
-              onClick={handleResume}
-              className="w-full py-3 bg-gradient-to-r from-red-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 rounded-xl text-white text-sm font-bold shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2"
-            >
-              <Maximize2 className="w-4 h-4" />
-              <span>Resume &amp; Re-Lock Fullscreen</span>
-            </button>
+            {violationOverlay.ejected ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const durationSeconds = Math.max(0, Math.round((Date.now() - startTimeRef.current) / 1000));
+                  onFinish({
+                    status: 'Terminated',
+                    violations: violationsCount,
+                    durationSeconds,
+                    terminationReason: violationOverlay.reason
+                  });
+                }}
+                className="w-full py-3 bg-red-600 hover:bg-red-500 rounded-xl text-white text-sm font-bold shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2"
+              >
+                <span>Acknowledge &amp; Exit Examination</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleResume}
+                className="w-full py-3 bg-gradient-to-r from-red-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 rounded-xl text-white text-sm font-bold shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2"
+              >
+                <Maximize2 className="w-4 h-4" />
+                <span>Resume &amp; Re-Lock Fullscreen</span>
+              </button>
+            )}
           </div>
         </div>
       )}

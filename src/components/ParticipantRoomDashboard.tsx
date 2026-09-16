@@ -118,7 +118,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
               <span>Anti-Cheat</span>
             </div>
             <div className="text-lg font-bold text-white">
-              {room.antiCheat ? 'Enabled' : 'Disabled'}
+              {room.antiCheat ? `${room.maxViolations || 5} Max Violations` : 'Disabled'}
             </div>
           </div>
 
@@ -187,15 +187,21 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
                       <td className="py-2.5 px-3">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           attempt.status === 'Completed'
-                            ? 'bg-emerald-500/10 text-emerald-400'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : attempt.status === 'Terminated'
+                            ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                             : attempt.status === 'Time Expired'
-                            ? 'bg-amber-500/10 text-amber-400'
-                            : 'bg-indigo-500/10 text-indigo-400'
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
                         }`}>
-                          {attempt.status}
+                          {attempt.status === 'Terminated' ? 'Ejected / Terminated' : attempt.status}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-slate-400">{attempt.violations}</td>
+                      <td className="py-2.5 px-3">
+                        <span className={attempt.violations > 0 ? 'text-amber-400 font-semibold' : 'text-slate-400'}>
+                          {attempt.violations} / {attempt.maxViolations || room.maxViolations || 5}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -227,7 +233,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
                 <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
                 <span>
                   {room.antiCheat
-                    ? `Anti-cheat monitoring is active. Do not exit fullscreen, switch browser tabs, or minimize the window.`
+                    ? `Anti-cheat monitoring is active. Do not exit fullscreen, switch browser tabs, or minimize the window. Reaching ${room.maxViolations || 5} violations will automatically eject you from the examination.`
                     : 'Standard proctoring is enabled.'}
                 </span>
               </li>

@@ -509,23 +509,36 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <td className="py-3 px-3">
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 attempt.status === 'Completed'
-                                  ? 'bg-emerald-500/10 text-emerald-400'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                  : attempt.status === 'Terminated'
+                                  ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                                   : attempt.status === 'Time Expired'
-                                  ? 'bg-amber-500/10 text-amber-400'
-                                  : 'bg-indigo-500/10 text-indigo-400'
+                                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                  : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
                               }`}>
-                                {attempt.status}
+                                {attempt.status === 'Terminated' ? 'Ejected' : attempt.status}
                               </span>
                             </td>
                             <td className="py-3 px-3">
-                              <span className={`font-semibold ${attempt.violations > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-                                {attempt.violations}
-                              </span>
-                              {attempt.flagged && (
-                                <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
-                                  Flagged
-                                </span>
-                              )}
+                              {(() => {
+                                const maxV = attempt.maxViolations || rooms.find(r => r.id === attempt.examId)?.maxViolations || 5;
+                                return (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`font-semibold ${attempt.violations >= maxV ? 'text-red-400 font-bold' : attempt.violations > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                                      {attempt.violations} / {maxV}
+                                    </span>
+                                    {attempt.status === 'Terminated' ? (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
+                                        Ejected
+                                      </span>
+                                    ) : attempt.flagged ? (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
+                                        Flagged
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                );
+                              })()}
                             </td>
                           </tr>
                         ))}
@@ -608,7 +621,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap justify-end">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                               room.active ? 'bg-emerald-950/60 border-emerald-800 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400'
                             }`}>
@@ -617,6 +630,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${availability.color}`}>
                               {availability.status}
                             </span>
+                            {room.antiCheat && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-950/60 border-amber-800 text-amber-300">
+                                Ejection: {room.maxViolations || 5} violations
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -642,7 +660,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         </div>
 
                         {/* Metrics Bar */}
-                        <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-800/80 text-center">
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-800/80 text-center">
                           <div className="p-2 bg-slate-950/50 rounded-xl">
                             <span className="text-[9px] text-slate-400 uppercase block">Timer</span>
                             <strong className="text-xs text-white">
@@ -653,6 +671,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <span className="text-[9px] text-slate-400 uppercase block">Anti-Cheat</span>
                             <strong className="text-xs text-emerald-400">
                               {room.antiCheat ? 'On' : 'Off'}
+                            </strong>
+                          </div>
+                          <div className="p-2 bg-slate-950/50 rounded-xl border border-amber-500/20 bg-amber-950/20">
+                            <span className="text-[9px] text-amber-400 uppercase block font-bold">Violation Limit</span>
+                            <strong className="text-xs text-amber-300">
+                              {room.antiCheat ? `${room.maxViolations || 5} max` : 'None'}
                             </strong>
                           </div>
                           <div className="p-2 bg-slate-950/50 rounded-xl">
@@ -819,23 +843,36 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <td className="py-3 px-4">
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 attempt.status === 'Completed'
-                                  ? 'bg-emerald-500/10 text-emerald-400'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                  : attempt.status === 'Terminated'
+                                  ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                                   : attempt.status === 'Time Expired'
-                                  ? 'bg-amber-500/10 text-amber-400'
-                                  : 'bg-indigo-500/10 text-indigo-400'
+                                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                  : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
                               }`}>
-                                {attempt.status}
+                                {attempt.status === 'Terminated' ? 'Ejected / Terminated' : attempt.status}
                               </span>
                             </td>
                             <td className="py-3 px-4">
-                              <span className={`font-bold ${attempt.violations > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-                                {attempt.violations}
-                              </span>
-                              {attempt.flagged && (
-                                <span className="ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
-                                  Review Flag
-                                </span>
-                              )}
+                              {(() => {
+                                const maxV = attempt.maxViolations || rooms.find(r => r.id === attempt.examId)?.maxViolations || 5;
+                                return (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`font-bold ${attempt.violations >= maxV ? 'text-red-400 font-black' : attempt.violations > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                                      {attempt.violations} / {maxV}
+                                    </span>
+                                    {attempt.status === 'Terminated' ? (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
+                                        Ejected
+                                      </span>
+                                    ) : attempt.flagged ? (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
+                                        Review Flag
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                );
+                              })()}
                             </td>
                           </tr>
                         ))}
@@ -1172,6 +1209,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <span className="text-[10px] text-slate-400 uppercase block">Passcode</span>
                 <strong className="text-xl font-mono text-indigo-300 tracking-wider block mt-0.5">
                   {viewRoomModal.passcode}
+                </strong>
+              </div>
+            </div>
+
+            {/* Specifications & Violation Ejection Limit */}
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="p-2.5 bg-slate-800/60 border border-slate-700/60 rounded-xl">
+                <span className="text-[9px] text-slate-400 uppercase block">Timer</span>
+                <strong className="text-xs text-white">
+                  {viewRoomModal.timerEnabled ? `${viewRoomModal.durationMinutes} min` : 'Off'}
+                </strong>
+              </div>
+              <div className="p-2.5 bg-slate-800/60 border border-slate-700/60 rounded-xl">
+                <span className="text-[9px] text-slate-400 uppercase block">Anti-Cheat</span>
+                <strong className="text-xs text-emerald-400">
+                  {viewRoomModal.antiCheat ? 'Active' : 'Off'}
+                </strong>
+              </div>
+              <div className="p-2.5 bg-amber-950/30 border border-amber-500/30 rounded-xl">
+                <span className="text-[9px] text-amber-400 uppercase block font-bold">Violation Limit</span>
+                <strong className="text-xs text-amber-300">
+                  {viewRoomModal.antiCheat ? `${viewRoomModal.maxViolations || 5} max` : 'None'}
                 </strong>
               </div>
             </div>

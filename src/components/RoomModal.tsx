@@ -33,7 +33,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
   const [timerEnabled, setTimerEnabled] = useState(room ? room.timerEnabled : true);
   const [durationMinutes, setDurationMinutes] = useState(room?.durationMinutes || 60);
   const [antiCheat, setAntiCheat] = useState(room ? room.antiCheat : true);
-  const [maxViolations, setMaxViolations] = useState(room?.maxViolations || 3);
+  const [maxViolations, setMaxViolations] = useState(room?.maxViolations !== undefined ? room.maxViolations : 5);
   const [startAt, setStartAt] = useState(room?.startAt ? room.startAt.slice(0, 16) : '');
   const [endAt, setEndAt] = useState(room?.endAt ? room.endAt.slice(0, 16) : '');
   const [active, setActive] = useState(room ? room.active : true);
@@ -76,7 +76,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
         timerEnabled,
         durationMinutes: Number(durationMinutes) || 60,
         antiCheat,
-        maxViolations: Number(maxViolations) || 3,
+        maxViolations: Math.max(1, Number(maxViolations) || 5),
         startAt: startAt ? new Date(startAt).toISOString() : '',
         endAt: endAt ? new Date(endAt).toISOString() : '',
         active
@@ -270,18 +270,23 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                   <span>Anti-Cheat Proctoring</span>
                 </label>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Flag after</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  disabled={!antiCheat}
-                  value={maxViolations}
-                  onChange={(e) => setMaxViolations(Number(e.target.value))}
-                  className="w-16 px-2.5 py-1.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-sm disabled:opacity-40"
-                />
-                <span className="text-xs text-slate-400">violations</span>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">Eject examinee after</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    disabled={!antiCheat}
+                    value={maxViolations}
+                    onChange={(e) => setMaxViolations(Number(e.target.value))}
+                    className="w-16 px-2.5 py-1.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-sm disabled:opacity-40 text-center font-bold"
+                  />
+                  <span className="text-xs text-slate-400">violations</span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Examinee is automatically ejected and locked out upon reaching this limit.
+                </p>
               </div>
             </div>
           </div>

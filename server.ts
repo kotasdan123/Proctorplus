@@ -47,6 +47,7 @@ interface AttemptRecord {
   durationSeconds?: number;
   status: 'In Progress' | 'Completed' | 'Time Expired' | 'Terminated';
   violations: number;
+  maxViolations?: number;
   flagged: boolean;
 }
 
@@ -98,7 +99,7 @@ const DEFAULT_STATE: DBState = {
       description: 'Standard examination room. Multiple examinees can join simultaneously with the room number and passcode.',
       formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSf_EXAMPLE_FORM/viewform?embedded=true',
       antiCheat: true,
-      maxViolations: 3,
+      maxViolations: 5,
       timerEnabled: true,
       durationMinutes: 45,
       startAt: '',
@@ -518,6 +519,7 @@ app.post('/api/attempts', (req: Request, res: Response) => {
     endedAt: null,
     status: 'In Progress',
     violations: 0,
+    maxViolations: Math.max(1, Number(exam.maxViolations) || 5),
     flagged: false
   };
 
@@ -561,7 +563,7 @@ app.get('/api/violations', (req: Request, res: Response) => {
   res.json(list);
 });
 
-// Record a proctor violation event
+// Record a proctor violation event & eject examinee if limit reached
 app.post('/api/violations', (req: Request, res: Response) => {
   const { attemptId, reason } = req.body;
   const attempt = db.attempts[attemptId];
@@ -572,7 +574,7 @@ app.post('/api/violations', (req: Request, res: Response) => {
 
   const exam = db.rooms[attempt.examId];
   const violationNumber = (attempt.violations || 0) + 1;
-  const maxViolations = exam?.maxViolations || 3;
+  const maxViolations = attempt.maxViolations || exam?.maxViolations || 5;
   const isFlagged = violationNumber >= maxViolations;
 
   const violationId = `vio-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
@@ -592,12 +594,17 @@ app.post('/api/violations', (req: Request, res: Response) => {
   attempt.violations = violationNumber;
   if (isFlagged) {
     attempt.flagged = true;
+    attempt.status = 'Terminated';
+    if (!attempt.endedAt) {
+      attempt.endedAt = Date.now();
+      attempt.durationSeconds = Math.max(0, Math.round((attempt.endedAt - attempt.startedAt) / 1000));
+    }
   }
 
   db.attempts[attempt.id] = attempt;
   saveDatabase(db);
-  broadcastUpdate('violation_logged', { violation: newViolation, attempt });
-  res.status(201).json({ violation: newViolation, attempt });
+  broadcastUpdate('violation_logged', { violation: newViolation, attempt, ejected: isFlagged });
+  res.status(201).json({ violation: newViolation, attempt, ejected: isFlagged });
 });
 
 // ---------------------------------------------------------------

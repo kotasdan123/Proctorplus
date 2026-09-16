@@ -23,7 +23,7 @@ const DEFAULT_ROOMS: ExamRoom[] = [
     description: 'Standard examination room. Multiple examinees can join simultaneously with the room number and passcode.',
     formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSeK35oh4wlzl4-EFWxgU1H5BGgQu02UOhgK392l8CIY8Cho0A/viewform?usp=header',
     antiCheat: true,
-    maxViolations: 3,
+    maxViolations: 5,
     timerEnabled: true,
     durationMinutes: 60,
     startAt: '',
@@ -510,6 +510,7 @@ export async function createAttempt(payload: {
 
   const rooms = getLocalRooms();
   const exam = rooms.find((r) => r.id === payload.examId);
+  const maxViolations = Math.max(1, Number(exam?.maxViolations) || 5);
   const attemptId = `attempt-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
   const newAttempt: ExamAttempt = {
     id: attemptId,
@@ -522,6 +523,7 @@ export async function createAttempt(payload: {
     endedAt: null,
     status: 'In Progress',
     violations: 0,
+    maxViolations,
     flagged: false
   };
 
@@ -591,6 +593,10 @@ export async function recordViolation(attemptId: string, reason: string): Promis
 
   const attempts = getLocalAttempts();
   const attempt = attempts.find((a) => a.id === attemptId);
+  const rooms = getLocalRooms();
+  const exam = rooms.find((r) => r.id === attempt?.examId);
+  const maxViolations = attempt?.maxViolations || exam?.maxViolations || 5;
+
   const violationNumber = (attempt?.violations || 0) + 1;
   const violationId = `vio-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
 
@@ -608,7 +614,14 @@ export async function recordViolation(attemptId: string, reason: string): Promis
 
   if (attempt) {
     attempt.violations = violationNumber;
-    if (violationNumber >= 3) attempt.flagged = true;
+    if (violationNumber >= maxViolations) {
+      attempt.flagged = true;
+      attempt.status = 'Terminated';
+      if (!attempt.endedAt) {
+        attempt.endedAt = Date.now();
+        attempt.durationSeconds = Math.max(0, Math.round((attempt.endedAt - attempt.startedAt) / 1000));
+      }
+    }
     saveLocalAttempts(attempts);
   }
 

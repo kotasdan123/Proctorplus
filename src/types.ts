@@ -30,6 +30,7 @@ export interface ExamAttempt {
   durationSeconds?: number;
   status: AttemptStatus;
   violations: number;
+  maxViolations?: number;
   flagged: boolean;
 }
 
