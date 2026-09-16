@@ -1,0 +1,41 @@
+{
+  "rooms": {
+    "sample-room-1": {
+      "id": "sample-room-1",
+      "roomNumber": "101202",
+      "passcode": "PASS99",
+      "title": "General Assessment & Knowledge Check",
+      "description": "Standard examination room. Multiple examinees can join simultaneously with the room number and passcode.",
+      "formUrl": "https://docs.google.com/forms/d/e/1FAIpQLSf_EXAMPLE_FORM/viewform?embedded=true",
+      "antiCheat": true,
+      "maxViolations": 3,
+      "timerEnabled": true,
+      "durationMinutes": 45,
+      "startAt": "",
+      "endAt": "",
+      "active": true,
+      "createdAt": 1789554730797,
+      "createdBy": "admin"
+    }
+  },
+  "attempts": {},
+  "violations": {},
+  "config": {
+    "syncMode": "server",
+    "firebase": {
+      "apiKey": "",
+      "authDomain": "",
+      "databaseURL": "",
+      "projectId": "",
+      "storageBucket": "",
+      "messagingSenderId": "",
+      "appId": "",
+      "enabled": false
+    },
+    "admin": {
+      "username": "admin",
+      "passwordHash": "123admin",
+      "name": "System Administrator"
+    }
+  }
+}

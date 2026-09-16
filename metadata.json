@@ -1,0 +1,6 @@
+{
+  "name": "Proctor+ Examination Portal",
+  "description": "Multi-computer online examination platform with Google Forms integration, live countdown timer, browser anti-cheat proctoring, and centralized admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
