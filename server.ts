@@ -139,6 +139,23 @@ const DEFAULT_STATE: DBState = {
   }
 };
 
+// CORS & No-Cache middleware for instant multi-PC sync
+app.use((req: Request, res: Response, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  if (req.path.startsWith('/api/')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
 let db: DBState = loadDatabase();
 
 function loadDatabase(): DBState {
@@ -150,6 +167,7 @@ function loadDatabase(): DBState {
         rooms: parsed.rooms || {},
         attempts: parsed.attempts || {},
         violations: parsed.violations || {},
+        sheetData: parsed.sheetData,
         config: {
           syncMode: parsed.config?.syncMode || 'server',
           firebase: parsed.config?.firebase || DEFAULT_STATE.config.firebase,
@@ -164,6 +182,32 @@ function loadDatabase(): DBState {
   return DEFAULT_STATE;
 }
 
+function getDatabase(): DBState {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const content = fs.readFileSync(DATA_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === 'object') {
+        db.rooms = parsed.rooms || db.rooms || {};
+        db.attempts = parsed.attempts || db.attempts || {};
+        db.violations = parsed.violations || db.violations || {};
+        if (parsed.sheetData) db.sheetData = parsed.sheetData;
+        if (parsed.config) {
+          db.config = {
+            ...db.config,
+            ...parsed.config,
+            admin: parsed.config.admin || db.config.admin,
+            firebase: parsed.config.firebase || db.config.firebase
+          };
+        }
+      }
+    }
+  } catch (err) {
+    // Keep in-memory db on transient read error
+  }
+  return db;
+}
+
 function saveDatabase(state: DBState) {
   try {
     fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), 'utf-8');
@@ -174,6 +218,17 @@ function saveDatabase(state: DBState) {
 
 // Connected SSE clients for live multi-PC updates
 const sseClients = new Set<Response>();
+
+// Send periodic heartbeat every 15s so proxies/Cloud Run don't close SSE connections
+setInterval(() => {
+  for (const client of sseClients) {
+    try {
+      client.write(': heartbeat\n\n');
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}, 15000);
 
 function broadcastUpdate(type: string, payload?: any) {
   const data = JSON.stringify({ type, timestamp: Date.now(), payload });
@@ -192,21 +247,22 @@ function broadcastUpdate(type: string, payload?: any) {
 
 // Server health and status
 app.get('/api/status', (req: Request, res: Response) => {
-  const roomsList = Object.values(db.rooms);
-  const attemptsList = Object.values(db.attempts);
+  const currentDb = getDatabase();
+  const roomsList = Object.values(currentDb.rooms);
+  const attemptsList = Object.values(currentDb.attempts);
   const activeAttempts = attemptsList.filter(a => a.status === 'In Progress').length;
   const activeRooms = roomsList.filter(r => r.active).length;
 
   res.json({
     status: 'ok',
     connectedPCs: Math.max(1, sseClients.size),
-    syncMode: db.config.syncMode,
-    firebaseConfigured: Boolean(db.config.firebase?.apiKey && db.config.firebase.enabled),
+    syncMode: currentDb.config.syncMode,
+    firebaseConfigured: Boolean(currentDb.config.firebase?.apiKey && currentDb.config.firebase.enabled),
     roomsCount: roomsList.length,
     activeRooms,
     activeAttempts,
     totalAttempts: attemptsList.length,
-    totalViolations: Object.keys(db.violations).length
+    totalViolations: Object.keys(currentDb.violations).length
   });
 });
 
@@ -214,8 +270,9 @@ app.get('/api/status', (req: Request, res: Response) => {
 app.get('/api/events', (req: Request, res: Response) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'no-cache, no-transform',
     'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
     'Access-Control-Allow-Origin': '*'
   });
 
@@ -229,12 +286,13 @@ app.get('/api/events', (req: Request, res: Response) => {
 
 // System configuration
 app.get('/api/config', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
   res.json({
-    syncMode: db.config.syncMode,
-    firebase: db.config.firebase,
+    syncMode: currentDb.config.syncMode,
+    firebase: currentDb.config.firebase,
     admin: {
-      username: db.config.admin.username,
-      name: db.config.admin.name
+      username: currentDb.config.admin.username,
+      name: currentDb.config.admin.name
     }
   });
 });
@@ -320,14 +378,27 @@ app.post('/api/config/admin', (req: Request, res: Response) => {
 // ---------------------------------------------------------------
 
 app.get('/api/rooms', (req: Request, res: Response) => {
-  const list = Object.values(db.rooms).sort((a, b) => b.createdAt - a.createdAt);
+  const currentDb = getDatabase();
+  const list = Object.values(currentDb.rooms).sort((a, b) => b.createdAt - a.createdAt);
   res.json(list);
+});
+
+app.get('/api/rooms/:id', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
+  const room = currentDb.rooms[req.params.id];
+  if (!room) {
+    res.status(404).json({ error: 'Room not found' });
+    return;
+  }
+  res.json(room);
 });
 
 // Admin Create Examination Room
 // Allows typing custom room number & passcode, or auto-generating
 app.post('/api/rooms', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
   const {
+    id: customId,
     roomNumber,
     passcode,
     title,
@@ -358,7 +429,7 @@ app.post('/api/rooms', (req: Request, res: Response) => {
   }
 
   // Check room number uniqueness
-  const duplicate = Object.values(db.rooms).find(
+  const duplicate = Object.values(currentDb.rooms).find(
     r => r.roomNumber.toLowerCase() === trimmedRoom.toLowerCase()
   );
 
@@ -367,7 +438,10 @@ app.post('/api/rooms', (req: Request, res: Response) => {
     return;
   }
 
-  const id = `room-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
+  const id = customId && typeof customId === 'string' && customId.trim()
+    ? customId.trim()
+    : `room-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
+
   const newRoom: RoomRecord = {
     id,
     roomNumber: trimmedRoom,
@@ -386,20 +460,18 @@ app.post('/api/rooms', (req: Request, res: Response) => {
     createdBy: 'admin'
   };
 
-  db.rooms[id] = newRoom;
-  saveDatabase(db);
+  currentDb.rooms[id] = newRoom;
+  db = currentDb;
+  saveDatabase(currentDb);
   broadcastUpdate('room_created', newRoom);
   res.status(201).json(newRoom);
 });
 
-// Update Room
+// Update or Upsert Room
 app.put('/api/rooms/:id', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
   const { id } = req.params;
-  const existing = db.rooms[id];
-  if (!existing) {
-    res.status(404).json({ error: 'Examination room not found' });
-    return;
-  }
+  const existing = currentDb.rooms[id];
 
   const {
     roomNumber,
@@ -416,58 +488,95 @@ app.put('/api/rooms/:id', (req: Request, res: Response) => {
     active
   } = req.body;
 
-  if (roomNumber) {
-    const trimmedRoom = String(roomNumber).trim();
-    const duplicate = Object.values(db.rooms).find(
-      r => r.id !== id && r.roomNumber.toLowerCase() === trimmedRoom.toLowerCase()
-    );
-    if (duplicate) {
-      res.status(400).json({ error: `Room Number "${trimmedRoom}" is already used by another room.` });
-      return;
+  let targetRoom: RoomRecord;
+
+  if (existing) {
+    if (roomNumber !== undefined) {
+      const trimmedRoom = String(roomNumber).trim();
+      const duplicate = Object.values(currentDb.rooms).find(
+        r => r.id !== id && r.roomNumber.toLowerCase() === trimmedRoom.toLowerCase()
+      );
+      if (duplicate) {
+        res.status(400).json({ error: `Room Number "${trimmedRoom}" is already used by another room.` });
+        return;
+      }
+      existing.roomNumber = trimmedRoom;
     }
-    existing.roomNumber = trimmedRoom;
+
+    if (passcode !== undefined) existing.passcode = String(passcode).trim();
+    if (title !== undefined) existing.title = String(title).trim();
+    if (description !== undefined) existing.description = String(description).trim();
+    if (formUrl !== undefined) existing.formUrl = String(formUrl).trim();
+    if (antiCheat !== undefined) existing.antiCheat = Boolean(antiCheat);
+    if (maxViolations !== undefined) existing.maxViolations = Math.max(1, Number(maxViolations) || 3);
+    if (timerEnabled !== undefined) existing.timerEnabled = Boolean(timerEnabled);
+    if (durationMinutes !== undefined) existing.durationMinutes = Math.max(1, Number(durationMinutes) || 60);
+    if (startAt !== undefined) existing.startAt = startAt;
+    if (endAt !== undefined) existing.endAt = endAt;
+    if (active !== undefined) existing.active = Boolean(active);
+
+    targetRoom = existing;
+  } else {
+    // Upsert room so client edits always persist across PCs even if creation was pending
+    const trimmedRoom = String(roomNumber || id.slice(-6)).trim();
+    const trimmedPass = String(passcode || 'PASS01').trim();
+    const trimmedTitle = String(title || 'Examination Room').trim();
+    const trimmedFormUrl = String(formUrl || DEFAULT_FORM_URL).trim();
+
+    targetRoom = {
+      id,
+      roomNumber: trimmedRoom,
+      passcode: trimmedPass,
+      title: trimmedTitle,
+      description: String(description || '').trim(),
+      formUrl: trimmedFormUrl,
+      antiCheat: antiCheat !== false,
+      maxViolations: Math.max(1, Number(maxViolations) || 3),
+      timerEnabled: timerEnabled !== false,
+      durationMinutes: Math.max(1, Number(durationMinutes) || 60),
+      startAt: startAt || '',
+      endAt: endAt || '',
+      active: active !== false,
+      createdAt: Date.now(),
+      createdBy: 'admin'
+    };
+    currentDb.rooms[id] = targetRoom;
   }
 
-  if (passcode !== undefined) existing.passcode = String(passcode).trim();
-  if (title !== undefined) existing.title = String(title).trim();
-  if (description !== undefined) existing.description = String(description).trim();
-  if (formUrl !== undefined) existing.formUrl = String(formUrl).trim();
-  if (antiCheat !== undefined) existing.antiCheat = Boolean(antiCheat);
-  if (maxViolations !== undefined) existing.maxViolations = Math.max(1, Number(maxViolations) || 3);
-  if (timerEnabled !== undefined) existing.timerEnabled = Boolean(timerEnabled);
-  if (durationMinutes !== undefined) existing.durationMinutes = Math.max(1, Number(durationMinutes) || 60);
-  if (startAt !== undefined) existing.startAt = startAt;
-  if (endAt !== undefined) existing.endAt = endAt;
-  if (active !== undefined) existing.active = Boolean(active);
-
-  db.rooms[id] = existing;
-  saveDatabase(db);
-  broadcastUpdate('room_updated', existing);
-  res.json(existing);
+  currentDb.rooms[id] = targetRoom;
+  db = currentDb;
+  saveDatabase(currentDb);
+  broadcastUpdate('room_updated', targetRoom);
+  res.json(targetRoom);
 });
 
 // Delete Room
 app.delete('/api/rooms/:id', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
   const { id } = req.params;
-  if (!db.rooms[id]) {
+  if (!currentDb.rooms[id]) {
     res.status(404).json({ error: 'Room not found' });
     return;
   }
 
-  delete db.rooms[id];
-  saveDatabase(db);
+  delete currentDb.rooms[id];
+  db = currentDb;
+  saveDatabase(currentDb);
   broadcastUpdate('room_deleted', { id });
   res.json({ success: true, id });
 });
 
 // Verify Room Entry for examinee (checks roomNumber & passcode typed by student)
 app.post('/api/rooms/verify', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
   const { roomNumber, passcode } = req.body;
   const trimmedRoom = String(roomNumber || '').trim().toLowerCase();
   const trimmedPass = String(passcode || '').trim();
 
-  const match = Object.values(db.rooms).find(
-    r => r.roomNumber.toLowerCase() === trimmedRoom && r.passcode === trimmedPass
+  const match = Object.values(currentDb.rooms).find(
+    r =>
+      r.roomNumber.trim().toLowerCase() === trimmedRoom &&
+      (r.passcode.trim() === trimmedPass || r.passcode.trim().toUpperCase() === trimmedPass.toUpperCase())
   );
 
   if (!match) {
@@ -502,14 +611,16 @@ app.post('/api/rooms/verify', (req: Request, res: Response) => {
 // ---------------------------------------------------------------
 
 app.get('/api/attempts', (req: Request, res: Response) => {
-  const list = Object.values(db.attempts).sort((a, b) => b.startedAt - a.startedAt);
+  const currentDb = getDatabase();
+  const list = Object.values(currentDb.attempts).sort((a, b) => b.startedAt - a.startedAt);
   res.json(list);
 });
 
 // Participant starts an exam
 app.post('/api/attempts', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
   const { examId, participantId, participantName } = req.body;
-  const exam = db.rooms[examId];
+  const exam = currentDb.rooms[examId];
   if (!exam) {
     res.status(404).json({ error: 'Examination room not found' });
     return;
@@ -531,16 +642,18 @@ app.post('/api/attempts', (req: Request, res: Response) => {
     flagged: false
   };
 
-  db.attempts[attemptId] = newAttempt;
-  saveDatabase(db);
+  currentDb.attempts[attemptId] = newAttempt;
+  db = currentDb;
+  saveDatabase(currentDb);
   broadcastUpdate('attempt_started', newAttempt);
   res.status(201).json(newAttempt);
 });
 
 // Update attempt (e.g. submit exam, time expired, or record violation)
 app.put('/api/attempts/:id', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
   const { id } = req.params;
-  const attempt = db.attempts[id];
+  const attempt = currentDb.attempts[id];
   if (!attempt) {
     res.status(404).json({ error: 'Attempt not found' });
     return;
@@ -556,8 +669,9 @@ app.put('/api/attempts/:id', (req: Request, res: Response) => {
   if (violations !== undefined) attempt.violations = violations;
   if (flagged !== undefined) attempt.flagged = Boolean(flagged);
 
-  db.attempts[id] = attempt;
-  saveDatabase(db);
+  currentDb.attempts[id] = attempt;
+  db = currentDb;
+  saveDatabase(currentDb);
   broadcastUpdate('attempt_updated', attempt);
   res.json(attempt);
 });
@@ -567,20 +681,22 @@ app.put('/api/attempts/:id', (req: Request, res: Response) => {
 // ---------------------------------------------------------------
 
 app.get('/api/violations', (req: Request, res: Response) => {
-  const list = Object.values(db.violations).sort((a, b) => b.timestamp - a.timestamp);
+  const currentDb = getDatabase();
+  const list = Object.values(currentDb.violations).sort((a, b) => b.timestamp - a.timestamp);
   res.json(list);
 });
 
 // Record a proctor violation event & eject examinee if limit reached
 app.post('/api/violations', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
   const { attemptId, reason } = req.body;
-  const attempt = db.attempts[attemptId];
+  const attempt = currentDb.attempts[attemptId];
   if (!attempt) {
     res.status(404).json({ error: 'Session attempt not found' });
     return;
   }
 
-  const exam = db.rooms[attempt.examId];
+  const exam = currentDb.rooms[attempt.examId];
   const violationNumber = (attempt.violations || 0) + 1;
   const maxViolations = attempt.maxViolations || exam?.maxViolations || 5;
   const isFlagged = violationNumber >= maxViolations;
@@ -598,7 +714,7 @@ app.post('/api/violations', (req: Request, res: Response) => {
     timestamp: Date.now()
   };
 
-  db.violations[violationId] = newViolation;
+  currentDb.violations[violationId] = newViolation;
   attempt.violations = violationNumber;
   if (isFlagged) {
     attempt.flagged = true;
@@ -609,8 +725,9 @@ app.post('/api/violations', (req: Request, res: Response) => {
     }
   }
 
-  db.attempts[attempt.id] = attempt;
-  saveDatabase(db);
+  currentDb.attempts[attempt.id] = attempt;
+  db = currentDb;
+  saveDatabase(currentDb);
   broadcastUpdate('violation_logged', { violation: newViolation, attempt, ejected: isFlagged });
   res.status(201).json({ violation: newViolation, attempt, ejected: isFlagged });
 });

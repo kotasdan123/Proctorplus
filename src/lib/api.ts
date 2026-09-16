@@ -1,6 +1,14 @@
 import { ExamRoom, ExamAttempt, SecurityViolation, SystemConfig, FirebaseConfig, SheetData } from '../types';
 
-const BASE_URL = '';
+export const getBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('PROCTOR_SERVER_URL');
+    if (custom && custom.trim()) return custom.trim().replace(/\/+$/, '');
+  }
+  return '';
+};
+
+const BASE_URL = getBaseUrl();
 
 const PROCTOR_ADMIN_KEY = 'proctor_admin_creds_v2';
 const PROCTOR_ROOMS_KEY = 'proctor_rooms_cache_v2';
@@ -120,7 +128,10 @@ export async function fetchStatus(): Promise<{
   totalViolations: number;
 }> {
   try {
-    const res = await fetch(`${BASE_URL}/api/status`);
+    const res = await fetch(`${getBaseUrl()}/api/status?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' }
+    });
     if (res.ok) return await res.json();
   } catch {
     // Fallback for static/GitHub Pages
@@ -144,7 +155,10 @@ export async function fetchStatus(): Promise<{
 
 export async function fetchConfig(): Promise<SystemConfig> {
   try {
-    const res = await fetch(`${BASE_URL}/api/config`);
+    const res = await fetch(`${getBaseUrl()}/api/config?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' }
+    });
     if (res.ok) return await res.json();
   } catch {
     // Fallback
@@ -172,9 +186,9 @@ export async function updateFirebaseConfig(payload: {
   syncMode?: 'server' | 'firebase';
 }): Promise<{ success: boolean; config: SystemConfig }> {
   try {
-    const res = await fetch(`${BASE_URL}/api/config/firebase`, {
+    const res = await fetch(`${getBaseUrl()}/api/config/firebase`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
       body: JSON.stringify(payload)
     });
     if (res.ok) return await res.json();
@@ -326,108 +340,97 @@ export async function updateAdminCredentials(payload: {
 
 export async function fetchRooms(): Promise<ExamRoom[]> {
   try {
-    const res = await fetch(`${BASE_URL}/api/rooms`);
+    const res = await fetch(`${getBaseUrl()}/api/rooms?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    });
     if (res.ok) {
       const data = await res.json();
-      saveLocalRooms(data);
-      return data;
+      if (Array.isArray(data)) {
+        saveLocalRooms(data);
+        return data;
+      }
     }
-  } catch {
-    // Static fallback
+  } catch (err) {
+    console.warn('Could not fetch rooms from server, checking local fallback:', err);
   }
   return getLocalRooms();
 }
 
 export async function createRoom(room: Partial<ExamRoom>): Promise<ExamRoom> {
   try {
-    const res = await fetch(`${BASE_URL}/api/rooms`, {
+    const res = await fetch(`${getBaseUrl()}/api/rooms`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
       body: JSON.stringify(room)
     });
+
     if (res.ok) {
       const created = await res.json();
-      const current = getLocalRooms();
+      const current = getLocalRooms().filter(r => r.id !== created.id);
       saveLocalRooms([created, ...current]);
       return created;
     }
-    if (res.status === 400) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to create room');
-    }
+
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to create room on server (Status ${res.status})`);
   } catch (err: any) {
-    if (err.message && !err.message.includes('fetch')) {
-      throw err;
-    }
+    console.error('Failed to create room:', err);
+    throw err;
   }
-
-  // Local fallback creation
-  const id = `room-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
-  const newRoom: ExamRoom = {
-    id,
-    roomNumber: String(room.roomNumber || '').trim(),
-    passcode: String(room.passcode || '').trim(),
-    title: String(room.title || '').trim(),
-    description: String(room.description || '').trim(),
-    formUrl: String(room.formUrl || '').trim(),
-    antiCheat: room.antiCheat !== false,
-    maxViolations: Math.max(1, Number(room.maxViolations) || 3),
-    timerEnabled: room.timerEnabled !== false,
-    durationMinutes: Math.max(1, Number(room.durationMinutes) || 60),
-    startAt: room.startAt || '',
-    endAt: room.endAt || '',
-    active: room.active !== false,
-    createdAt: Date.now(),
-    createdBy: 'admin'
-  };
-
-  const current = getLocalRooms();
-  saveLocalRooms([newRoom, ...current]);
-  return newRoom;
 }
 
 export async function updateRoom(id: string, room: Partial<ExamRoom>): Promise<ExamRoom> {
   try {
-    const res = await fetch(`${BASE_URL}/api/rooms/${id}`, {
+    const res = await fetch(`${getBaseUrl()}/api/rooms/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
       body: JSON.stringify(room)
     });
+
     if (res.ok) {
       const updated = await res.json();
       const current = getLocalRooms().map((r) => (r.id === id ? updated : r));
       saveLocalRooms(current);
       return updated;
     }
-  } catch {
-    // Fallback
-  }
 
-  const current = getLocalRooms();
-  const found = current.find((r) => r.id === id);
-  if (!found) throw new Error('Room not found');
-  const updated = { ...found, ...room };
-  saveLocalRooms(current.map((r) => (r.id === id ? updated : r)));
-  return updated;
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to update room on server (Status ${res.status})`);
+  } catch (err: any) {
+    console.error('Failed to update room:', err);
+    throw err;
+  }
 }
 
 export async function deleteRoom(id: string): Promise<{ success: boolean; id: string }> {
   try {
-    const res = await fetch(`${BASE_URL}/api/rooms/${id}`, {
-      method: 'DELETE'
+    const res = await fetch(`${getBaseUrl()}/api/rooms/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'Cache-Control': 'no-cache' }
     });
+
     if (res.ok) {
       const current = getLocalRooms().filter((r) => r.id !== id);
       saveLocalRooms(current);
       return { success: true, id };
     }
-  } catch {
-    // Fallback
-  }
 
-  const current = getLocalRooms().filter((r) => r.id !== id);
-  saveLocalRooms(current);
-  return { success: true, id };
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to delete room (Status ${res.status})`);
+  } catch (err: any) {
+    console.error('Failed to delete room:', err);
+    throw err;
+  }
 }
 
 export async function verifyRoom(roomNumber: string, passcode: string): Promise<{
@@ -438,44 +441,52 @@ export async function verifyRoom(roomNumber: string, passcode: string): Promise<
   const cleanPass = String(passcode || '').trim();
 
   try {
-    const res = await fetch(`${BASE_URL}/api/rooms/verify`, {
+    const res = await fetch(`${getBaseUrl()}/api/rooms/verify?_t=${Date.now()}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
       body: JSON.stringify({ roomNumber: cleanRoom, passcode: cleanPass })
     });
+
     if (res.ok) {
       return await res.json();
     }
-    if (res.status === 404 || res.status === 403) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Invalid room number or passcode');
-    }
+
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Invalid Room Number or Passcode');
   } catch (err: any) {
-    if (err.message && !err.message.includes('fetch')) {
+    if (err.message && !err.message.includes('fetch') && !err.message.includes('NetworkError')) {
       throw err;
     }
+
+    // Local fallback only if offline / server disconnected
+    const rooms = getLocalRooms();
+    const match = rooms.find(
+      (r) =>
+        r.roomNumber.trim().toLowerCase() === cleanRoom &&
+        (r.passcode.trim() === cleanPass || r.passcode.trim().toUpperCase() === cleanPass.toUpperCase())
+    );
+
+    if (!match) {
+      throw new Error('Invalid Room Number or Passcode. Please check and try again.');
+    }
+
+    if (!match.active) {
+      throw new Error('This examination room is currently closed by the administrator.');
+    }
+
+    return { success: true, room: match };
   }
-
-  // Local fallback
-  const rooms = getLocalRooms();
-  const match = rooms.find(
-    (r) => r.roomNumber.toLowerCase() === cleanRoom && r.passcode === cleanPass
-  );
-
-  if (!match) {
-    throw new Error('Invalid Room Number or Passcode. Please check and try again.');
-  }
-
-  if (!match.active) {
-    throw new Error('This examination room is currently closed by the administrator.');
-  }
-
-  return { success: true, room: match };
 }
 
 export async function fetchAttempts(): Promise<ExamAttempt[]> {
   try {
-    const res = await fetch(`${BASE_URL}/api/attempts`);
+    const res = await fetch(`${getBaseUrl()}/api/attempts?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' }
+    });
     if (res.ok) {
       const data = await res.json();
       saveLocalAttempts(data);
@@ -493,9 +504,9 @@ export async function createAttempt(payload: {
   participantName?: string;
 }): Promise<ExamAttempt> {
   try {
-    const res = await fetch(`${BASE_URL}/api/attempts`, {
+    const res = await fetch(`${getBaseUrl()}/api/attempts`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
       body: JSON.stringify(payload)
     });
     if (res.ok) {
@@ -534,9 +545,9 @@ export async function createAttempt(payload: {
 
 export async function updateAttempt(id: string, payload: Partial<ExamAttempt>): Promise<ExamAttempt> {
   try {
-    const res = await fetch(`${BASE_URL}/api/attempts/${id}`, {
+    const res = await fetch(`${getBaseUrl()}/api/attempts/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
       body: JSON.stringify(payload)
     });
     if (res.ok) {
@@ -559,7 +570,10 @@ export async function updateAttempt(id: string, payload: Partial<ExamAttempt>): 
 
 export async function fetchViolations(): Promise<SecurityViolation[]> {
   try {
-    const res = await fetch(`${BASE_URL}/api/violations`);
+    const res = await fetch(`${getBaseUrl()}/api/violations?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' }
+    });
     if (res.ok) {
       const data = await res.json();
       saveLocalViolations(data);
@@ -576,9 +590,9 @@ export async function recordViolation(attemptId: string, reason: string): Promis
   attempt: ExamAttempt;
 }> {
   try {
-    const res = await fetch(`${BASE_URL}/api/violations`, {
+    const res = await fetch(`${getBaseUrl()}/api/violations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
       body: JSON.stringify({ attemptId, reason })
     });
     if (res.ok) {
@@ -637,7 +651,7 @@ export function subscribeToEvents(onUpdate: (event: any) => void): () => void {
 
   function connect() {
     try {
-      eventSource = new EventSource(`${BASE_URL}/api/events`);
+      eventSource = new EventSource(`${getBaseUrl()}/api/events`);
 
       eventSource.onmessage = (e) => {
         try {
@@ -653,11 +667,11 @@ export function subscribeToEvents(onUpdate: (event: any) => void): () => void {
           eventSource.close();
           eventSource = null;
         }
-        // Retry connection in 6 seconds, silent fail if static host
-        retryTimer = setTimeout(connect, 6000);
+        // Retry connection in 3 seconds to keep sync robust
+        retryTimer = setTimeout(connect, 3000);
       };
     } catch {
-      retryTimer = setTimeout(connect, 6000);
+      retryTimer = setTimeout(connect, 3000);
     }
   }
 
@@ -678,7 +692,10 @@ export function subscribeToEvents(onUpdate: (event: any) => void): () => void {
 
 export async function fetchSheetData(force = false): Promise<SheetData> {
   try {
-    const res = await fetch(`${BASE_URL}/api/sheet${force ? '?force=true' : ''}`);
+    const res = await fetch(`${getBaseUrl()}/api/sheet?_t=${Date.now()}${force ? '&force=true' : ''}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' }
+    });
     if (!res.ok) throw new Error(`Failed to fetch sheet data: ${res.statusText}`);
     return await res.json();
   } catch (err) {
@@ -688,9 +705,9 @@ export async function fetchSheetData(force = false): Promise<SheetData> {
 }
 
 export async function syncSheetData(url?: string): Promise<SheetData> {
-  const res = await fetch(`${BASE_URL}/api/sheet/sync`, {
+  const res = await fetch(`${getBaseUrl()}/api/sheet/sync`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
     body: JSON.stringify({ url })
   });
   if (!res.ok) throw new Error(`Failed to sync sheet: ${res.statusText}`);
@@ -699,9 +716,9 @@ export async function syncSheetData(url?: string): Promise<SheetData> {
 }
 
 export async function saveSheetData(payload: { headers?: string[]; rows: string[][]; url?: string }): Promise<SheetData> {
-  const res = await fetch(`${BASE_URL}/api/sheet/save`, {
+  const res = await fetch(`${getBaseUrl()}/api/sheet/save`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
     body: JSON.stringify(payload)
   });
   if (!res.ok) throw new Error(`Failed to save sheet: ${res.statusText}`);
@@ -710,18 +727,18 @@ export async function saveSheetData(payload: { headers?: string[]; rows: string[
 }
 
 export async function updateSheetCell(rowIndex: number, colIndex: number, value: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/sheet/cell`, {
+  const res = await fetch(`${getBaseUrl()}/api/sheet/cell`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
     body: JSON.stringify({ rowIndex, colIndex, value })
   });
   if (!res.ok) throw new Error(`Failed to update cell: ${res.statusText}`);
 }
 
 export async function addSheetRow(row: string[], index?: number): Promise<string[][]> {
-  const res = await fetch(`${BASE_URL}/api/sheet/row`, {
+  const res = await fetch(`${getBaseUrl()}/api/sheet/row`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
     body: JSON.stringify({ row, index })
   });
   if (!res.ok) throw new Error(`Failed to add row: ${res.statusText}`);
@@ -730,8 +747,9 @@ export async function addSheetRow(row: string[], index?: number): Promise<string
 }
 
 export async function deleteSheetRow(index: number): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/sheet/row/${index}`, {
-    method: 'DELETE'
+  const res = await fetch(`${getBaseUrl()}/api/sheet/row/${index}`, {
+    method: 'DELETE',
+    headers: { 'Cache-Control': 'no-cache' }
   });
   if (!res.ok) throw new Error(`Failed to delete row: ${res.statusText}`);
 }
