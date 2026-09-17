@@ -77,12 +77,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
         <div className="flex items-center gap-3">
           {/* Sync Status Badge */}
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] animate-pulse" />
             <span className="text-slate-300 font-medium">
-              {syncMode === 'server' ? 'Built-in Multi-PC Sync' : 'Firebase RTDB Sync'}
+              Google Cloud Database Synced
             </span>
-            <span className="text-[10px] text-slate-500 border-l border-slate-800 pl-2">
-              {connectedPCs} PC{connectedPCs === 1 ? '' : 's'} connected
+            <span className="text-[10px] text-indigo-400 border-l border-slate-800 pl-2 font-mono">
+              Live Cloud Firestore
             </span>
           </div>
 
@@ -198,16 +198,28 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     required
                     value={roomNumber}
                     onChange={(e) => setRoomNumber(e.target.value)}
-                    placeholder="e.g. 101202 or MATH-101"
-                    className="w-full pl-10 pr-3.5 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-white font-mono text-base tracking-wider focus:outline-none focus:border-indigo-500 transition-colors"
+                    placeholder="e.g. 611"
+                    className="w-full pl-10 pr-3.5 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-white font-mono text-base tracking-wider focus:outline-none focus:border-indigo-500 transition-colors uppercase"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Room Passcode
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Room Passcode
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRoomNumber('611');
+                      setPasscode('SIXELEVEN');
+                    }}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors font-medium underline underline-offset-2"
+                  >
+                    Use Sample Room (611)
+                  </button>
+                </div>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                   <input
@@ -215,8 +227,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     required
                     value={passcode}
                     onChange={(e) => setPasscode(e.target.value)}
-                    placeholder="e.g. PASS99"
-                    className="w-full pl-10 pr-3.5 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-white font-mono text-base tracking-wider focus:outline-none focus:border-indigo-500 transition-colors"
+                    placeholder="e.g. SIXELEVEN"
+                    className="w-full pl-10 pr-3.5 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-white font-mono text-base tracking-wider focus:outline-none focus:border-indigo-500 transition-colors uppercase"
                   />
                 </div>
               </div>

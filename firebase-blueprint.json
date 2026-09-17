@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Room",
+      "description": "Proctored examination room configured by administrators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "passcode": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "formUrl": { "type": "string" },
+        "antiCheat": { "type": "boolean" },
+        "maxViolations": { "type": "number" },
+        "timerEnabled": { "type": "boolean" },
+        "durationMinutes": { "type": "number" },
+        "startAt": { "type": "string" },
+        "endAt": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["roomNumber", "passcode", "title", "active"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Administrator account credentials and settings",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["username", "password"]
+    },
+    "Attempt": {
+      "title": "Attempt",
+      "description": "Student examination attempt session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "examId": { "type": "string" },
+        "examTitle": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "participantId": { "type": "string" },
+        "participantName": { "type": "string" },
+        "startedAt": { "type": "number" },
+        "endedAt": { "type": "number" },
+        "durationSeconds": { "type": "number" },
+        "status": { "type": "string" },
+        "violations": { "type": "number" },
+        "maxViolations": { "type": "number" },
+        "flagged": { "type": "boolean" }
+      },
+      "required": ["examId", "participantName", "status", "startedAt"]
+    },
+    "Violation": {
+      "title": "Violation",
+      "description": "Anti-cheat proctoring security violation record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "attemptId": { "type": "string" },
+        "examId": { "type": "string" },
+        "examTitle": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "participantId": { "type": "string" },
+        "number": { "type": "number" },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["attemptId", "reason", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/rooms/{roomId}": {
+      "schema": "Room",
+      "description": "Examination rooms available to all student participants and proctor admins"
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Admin accounts for managing rooms and exams"
+    },
+    "/attempts/{attemptId}": {
+      "schema": "Attempt",
+      "description": "Examinee exam sessions and real-time status"
+    },
+    "/violations/{violationId}": {
+      "schema": "Violation",
+      "description": "Security infraction logs detected during exams"
+    }
+  }
+}

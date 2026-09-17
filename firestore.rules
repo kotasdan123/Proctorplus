@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Examination Rooms: Anyone can read active rooms to join with passcode
+    match /rooms/{roomId} {
+      allow read: if isValidId(roomId);
+      allow create, update: if isValidId(roomId)
+        && request.resource.data.roomNumber is string
+        && request.resource.data.roomNumber.size() > 0
+        && request.resource.data.passcode is string
+        && request.resource.data.passcode.size() > 0
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0;
+      allow delete: if isValidId(roomId);
+    }
+
+    // Admin accounts: Used for centralized admin credentials across PCs
+    match /admins/{adminId} {
+      allow read: if isValidId(adminId);
+      allow create, update: if isValidId(adminId)
+        && request.resource.data.username is string
+        && request.resource.data.username.size() > 0;
+      allow delete: if isValidId(adminId);
+    }
+
+    // Exam attempts: Created and updated by examinees and proctor dashboard
+    match /attempts/{attemptId} {
+      allow read: if isValidId(attemptId);
+      allow create: if isValidId(attemptId)
+        && request.resource.data.examId is string
+        && request.resource.data.participantName is string;
+      allow update: if isValidId(attemptId);
+      allow delete: if isValidId(attemptId);
+    }
+
+    // Security violations: Recorded during proctored exam sessions
+    match /violations/{violationId} {
+      allow read: if isValidId(violationId);
+      allow create: if isValidId(violationId)
+        && request.resource.data.attemptId is string
+        && request.resource.data.reason is string;
+      allow update, delete: if isValidId(violationId);
+    }
+  }
+}

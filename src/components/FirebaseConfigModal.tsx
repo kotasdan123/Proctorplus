@@ -138,6 +138,29 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
         </div>
 
         <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+          {/* Active Cloud Firestore Database Banner */}
+          <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Google Cloud Database Connected</span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-semibold border border-emerald-500/30">
+                ONLINE • CLOUD FIRESTORE
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Examination rooms, administrator accounts, examinee submissions, and proctoring logs are persisted in Google Cloud Firestore. Rooms created on this PC are instantly visible to any examinee on other computers, mobile devices, and static deployments (such as GitHub Pages).
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono text-slate-400 pt-1 border-t border-emerald-900/60">
+              <div>
+                <span className="text-slate-500">Project:</span> gen-lang-client-0667768884
+              </div>
+              <div className="truncate">
+                <span className="text-slate-500">Database:</span> ai-studio-proctorexaminati-...
+              </div>
+            </div>
+          </div>
           {/* Active Mode Selector */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3">

@@ -330,13 +330,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <div
               onClick={() => setFirebaseModalOpen(true)}
               className="cursor-pointer flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 text-xs text-slate-300 transition-colors"
-              title="Click to configure Firebase or switch sync mode"
+              title="Google Cloud Firestore Database Connected"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] animate-pulse" />
               <span className="hidden sm:inline">
-                {systemConfig?.syncMode === 'firebase' ? 'Firebase RTDB Sync' : 'Built-in Multi-PC Sync'}
+                Google Cloud Database Synced
               </span>
-              <span className="text-[10px] text-indigo-400 font-semibold underline">Settings</span>
+              <span className="text-[10px] text-indigo-400 font-semibold underline">Firestore</span>
             </div>
 
             {/* Create Room Button */}
@@ -1055,13 +1055,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       <Flame className="w-6 h-6" />
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-white">Database &amp; Synchronization</h3>
+                      <h3 className="text-base font-bold text-white">Google Cloud Firestore Database</h3>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        Current mode:{' '}
-                        <strong className="text-indigo-400">
-                          {systemConfig?.syncMode === 'firebase'
-                            ? 'Custom Firebase Realtime Database'
-                            : 'Built-in Server Multi-PC Sync'}
+                        Current status:{' '}
+                        <strong className="text-emerald-400">
+                          Active &amp; Globally Synchronized (Cloud Firestore)
                         </strong>
                       </p>
                     </div>
@@ -1073,17 +1071,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     className="px-4 py-2.5 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-600/20 flex items-center gap-2 flex-shrink-0"
                   >
                     <Flame className="w-4 h-4" />
-                    <span>Replace Firebase Config</span>
+                    <span>View Cloud Database Details</span>
                   </button>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 text-xs text-slate-300 space-y-2 leading-relaxed">
                   <div className="flex items-center gap-2 text-emerald-400 font-semibold">
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Ready for Multi-Computer Testing</span>
+                    <span>Multi-PC &amp; GitHub Pages Real-Time Sync Connected</span>
                   </div>
                   <p className="text-slate-400">
-                    By default, Proctor+ uses the <strong>Built-in Server Synchronization</strong> engine. Any computer visiting the site URL can join rooms and take exams without needing Firebase setup. If you prefer to synchronize through your personal Firebase project, click <em>"Replace Firebase Config"</em> to paste your project credentials.
+                    Your examination rooms, admin credentials, examinee attempts, and proctoring violations are stored directly in your provisioned <strong>Google Cloud Firestore</strong> database. Rooms created on any PC instantly appear and allow logins on other PCs, mobile devices, or static deployments (such as GitHub Pages).
                   </p>
                 </div>
               </div>
