@@ -33,7 +33,7 @@ export const ResultView: React.FC<ResultViewProps> = ({ room, result, onReturn }
       }`}>
         {/* Glow accent */}
         <div className={`absolute -top-24 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full blur-3xl pointer-events-none ${
-          isTerminated ? 'bg-red-500/15' : isTimeExpired ? 'bg-amber-500/10' : 'bg-indigo-500/10'
+          isTerminated ? 'bg-red-500/15' : isTimeExpired ? 'bg-amber-500/10' : 'bg-emerald-500/10'
         }`} />
 
         {/* Status Icon */}
@@ -94,7 +94,7 @@ export const ResultView: React.FC<ResultViewProps> = ({ room, result, onReturn }
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               Room Number
             </span>
-            <strong className="text-sm font-mono text-indigo-300 font-semibold">
+            <strong className="text-sm font-mono text-emerald-300 font-semibold">
               {room.roomNumber}
             </strong>
           </div>
@@ -128,7 +128,7 @@ export const ResultView: React.FC<ResultViewProps> = ({ room, result, onReturn }
           className={`w-full py-3.5 rounded-2xl text-white font-bold text-sm shadow-xl transition-all flex items-center justify-center gap-2 ${
             isTerminated
               ? 'bg-red-600 hover:bg-red-500 shadow-red-600/20'
-              : 'bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 shadow-indigo-600/20'
+              : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 shadow-emerald-600/20'
           }`}
         >
           <span>Return to Room Lobby</span>

@@ -299,8 +299,13 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
       <header className="h-16 px-4 sm:px-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-4 flex-shrink-0 z-10">
         {/* Exam and Examinee Info */}
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold flex-shrink-0">
-            {room.roomNumber.slice(0, 2).toUpperCase()}
+          <div className="w-9 h-9 rounded-full border border-emerald-500/40 p-0.5 bg-slate-900 shadow-sm flex items-center justify-center flex-shrink-0">
+            <img
+              src="/logo.png"
+              alt="Logo"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover rounded-full"
+            />
           </div>
           <div className="min-w-0">
             <h1 className="text-sm sm:text-base font-bold text-white truncate leading-tight">
@@ -323,7 +328,7 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
                 ? 'bg-amber-950/80 border-amber-500 text-amber-300'
                 : 'bg-slate-800/80 border-slate-700 text-white'
             }`}>
-              <Clock className="w-4 h-4 text-indigo-400" />
+              <Clock className="w-4 h-4 text-emerald-400" />
               <span>{formatTime(secondsRemaining)}</span>
             </div>
           )}
@@ -369,7 +374,7 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
       {room.timerEnabled && (
         <div className="w-full h-1 bg-slate-800 flex-shrink-0">
           <div
-            className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500"
+            className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -378,7 +383,7 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
       {/* Proctor Notice Banner */}
       <div className="px-4 py-2 bg-slate-900/60 border-b border-slate-800 text-[11px] text-slate-400 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Shield className="w-3.5 h-3.5 text-indigo-400" />
+          <Shield className="w-3.5 h-3.5 text-emerald-400" />
           <span>
             {room.antiCheat
               ? `Anti-cheat proctoring active: Do not exit fullscreen, switch tabs, or minimize window.`
@@ -459,7 +464,7 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
               <button
                 type="button"
                 onClick={handleResume}
-                className="w-full py-3 bg-gradient-to-r from-red-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 rounded-xl text-white text-sm font-bold shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 bg-gradient-to-r from-red-600 to-blue-600 hover:from-red-500 hover:to-blue-500 rounded-xl text-white text-sm font-bold shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2"
               >
                 <Maximize2 className="w-4 h-4" />
                 <span>Resume &amp; Re-Lock Fullscreen</span>

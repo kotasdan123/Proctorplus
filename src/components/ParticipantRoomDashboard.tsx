@@ -32,12 +32,17 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
       {/* Top Header */}
       <header className="border-b border-slate-800 bg-slate-900/80 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white font-black text-lg flex items-center justify-center shadow-lg shadow-indigo-600/30">
-            +
+          <div className="w-10 h-10 rounded-full border-2 border-emerald-500/40 p-0.5 bg-slate-900 shadow-md shadow-emerald-500/20 flex-shrink-0">
+            <img
+              src="/logo.png"
+              alt="Proctor+ Logo"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover rounded-full"
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold tracking-wider text-indigo-400 uppercase">
+              <span className="text-xs font-bold tracking-wider text-emerald-400 uppercase">
                 EXAMINATION ROOM
               </span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">
@@ -73,10 +78,10 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         {/* Room Welcome Hero */}
-        <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-900 border border-indigo-500/20 shadow-2xl relative overflow-hidden">
+        <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800 shadow-2xl relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div className="space-y-2">
-              <span className="text-xs font-bold tracking-wider text-indigo-400 uppercase">
+              <span className="text-xs font-bold tracking-wider text-emerald-400 uppercase">
                 SHARED ROOM • MULTI-PC ACCESS
               </span>
               <div className="flex items-baseline gap-3">
@@ -103,7 +108,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
         {/* Exam Specifications */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-wider mb-1">
+            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">
               <Clock className="w-4 h-4" />
               <span>Timer</span>
             </div>
@@ -135,7 +140,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
               Passcode
             </div>
-            <div className="text-lg font-mono font-bold text-indigo-300">
+            <div className="text-lg font-mono font-bold text-emerald-300">
               {room.passcode}
             </div>
           </div>
@@ -154,7 +159,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
           <button
             type="button"
             onClick={() => setInstructionsOpen(true)}
-            className="px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 rounded-2xl text-white font-bold text-sm shadow-xl shadow-indigo-600/25 flex items-center justify-center gap-2 flex-shrink-0 transition-all hover:scale-[1.02]"
+            className="px-6 py-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 rounded-2xl text-white font-bold text-sm shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 flex-shrink-0 transition-all hover:scale-[1.02]"
           >
             <Play className="w-4 h-4 fill-white" />
             <span>Start Examination</span>
@@ -192,7 +197,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
                             ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                             : attempt.status === 'Time Expired'
                             ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                            : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                         }`}>
                           {attempt.status === 'Terminated' ? 'Ejected / Terminated' : attempt.status}
                         </span>
@@ -222,7 +227,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
 
             <ul className="space-y-2.5 text-xs text-slate-300 mb-6 bg-slate-800/40 p-4 rounded-xl border border-slate-800">
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <span>
                   {room.timerEnabled
                     ? `You will have exactly ${room.durationMinutes} minutes to complete this attempt.`
@@ -230,7 +235,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <span>
                   {room.antiCheat
                     ? `Anti-cheat monitoring is active. Do not exit fullscreen, switch browser tabs, or minimize the window. Reaching ${room.maxViolations || 5} violations will automatically eject you from the examination.`
@@ -238,7 +243,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <span>Complete and submit the Google Form before clicking "Submit Exam".</span>
               </li>
             </ul>
@@ -257,7 +262,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
                   setInstructionsOpen(false);
                   onStartExam();
                 }}
-                className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-lg shadow-indigo-600/20"
+                className="px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 rounded-xl shadow-lg shadow-emerald-600/20"
               >
                 I Understand, Start Now
               </button>

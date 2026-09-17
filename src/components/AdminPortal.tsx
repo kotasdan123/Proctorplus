@@ -140,7 +140,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (!room.active) return { status: 'Closed', color: 'text-slate-400 bg-slate-800' };
     const now = Date.now();
     if (room.startAt && new Date(room.startAt).getTime() > now) {
-      return { status: 'Upcoming', color: 'text-indigo-400 bg-indigo-950/60' };
+      return { status: 'Upcoming', color: 'text-blue-400 bg-blue-950/60' };
     }
     if (room.endAt && new Date(room.endAt).getTime() < now) {
       return { status: 'Expired', color: 'text-amber-400 bg-amber-950/60' };
@@ -149,17 +149,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex selection:bg-emerald-500/30 selection:text-emerald-200">
       {/* Left Navigation Sidebar */}
       <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between hidden md:flex flex-shrink-0">
         <div className="p-6 space-y-6">
           {/* Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white font-black text-xl flex items-center justify-center shadow-lg shadow-indigo-600/30">
-              +
+            <div className="w-10 h-10 rounded-full border-2 border-emerald-500/40 p-0.5 bg-slate-900 shadow-md shadow-emerald-500/20 flex-shrink-0">
+              <img
+                src="/logo.png"
+                alt="Proctor+ Logo"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover rounded-full"
+              />
             </div>
             <div>
-              <span className="font-extrabold tracking-tight text-white text-base">Proctor+</span>
+              <span className="font-extrabold tracking-tight text-white text-base">
+                Proctor<span className="text-emerald-400">+</span>
+              </span>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Admin Control Center</p>
             </div>
           </div>
@@ -171,7 +178,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onClick={() => setCurrentPage('dashboard')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'dashboard'
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
             >
@@ -184,7 +191,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onClick={() => setCurrentPage('rooms')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'rooms'
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
             >
@@ -200,7 +207,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onClick={() => setCurrentPage('submissions')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'submissions'
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
             >
@@ -216,7 +223,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onClick={() => setCurrentPage('sheet')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'sheet'
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
             >
@@ -232,7 +239,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onClick={() => setCurrentPage('violations')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'violations'
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
             >
@@ -250,7 +257,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onClick={() => setCurrentPage('analytics')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'analytics'
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
             >
@@ -263,7 +270,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onClick={() => setCurrentPage('settings')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'settings'
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
             >
@@ -276,7 +283,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         {/* User Mini Profile & Logout */}
         <div className="p-4 border-t border-slate-800 space-y-3">
           <div className="flex items-center gap-3 px-2">
-            <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center font-bold text-indigo-400 text-xs">
+            <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center font-bold text-emerald-400 text-xs">
               A
             </div>
             <div className="min-w-0">
@@ -336,7 +343,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <span className="hidden sm:inline">
                 Google Cloud Database Synced
               </span>
-              <span className="text-[10px] text-indigo-400 font-semibold underline">Firestore</span>
+              <span className="text-[10px] text-emerald-400 font-semibold underline">Firestore</span>
             </div>
 
             {/* Create Room Button */}
@@ -346,7 +353,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 setEditingRoom(null);
                 setCreateModalOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-600/20 transition-all hover:scale-[1.02]"
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.02]"
             >
               <Plus className="w-4 h-4" />
               <span>Create Room</span>
@@ -362,9 +369,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           {currentPage === 'dashboard' && (
             <div className="space-y-6">
               {/* Hero Banner */}
-              <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-indigo-950/60 via-slate-900 to-slate-900 border border-indigo-500/20 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+              <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-slate-800 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
                 <div>
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-indigo-400 block mb-1">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-400 block mb-1">
                     EXAMINATION CONTROL CENTER
                   </span>
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
@@ -381,7 +388,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       setEditingRoom(null);
                       setCreateModalOpen(true);
                     }}
-                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-600/25 flex items-center gap-2"
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/25 flex items-center gap-2"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Create Examination Room</span>
@@ -409,7 +416,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                     Live Examinees
                   </span>
-                  <strong className="text-2xl font-bold text-indigo-400">{liveSessions}</strong>
+                  <strong className="text-2xl font-bold text-blue-400">{liveSessions}</strong>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
@@ -444,11 +451,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       </span>
                       <h3 className="text-base font-bold text-white">Overall Completion Rate</h3>
                     </div>
-                    <span className="text-3xl font-black text-indigo-400">{completionRate}%</span>
+                    <span className="text-3xl font-black text-emerald-400">{completionRate}%</span>
                   </div>
                   <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all duration-500"
+                      className="h-full bg-gradient-to-r from-emerald-500 to-blue-400 transition-all duration-500"
                       style={{ width: `${completionRate}%` }}
                     />
                   </div>
@@ -459,7 +466,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
 
                 <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
                     SHARED ACCESS MODEL
                   </span>
                   <h3 className="text-base font-bold text-white">Multi-Computer Real-Time Sync</h3>
@@ -476,7 +483,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       <span className="text-[10px] text-slate-400">Independent Sessions</span>
                     </div>
                     <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-800">
-                      <strong className="text-lg font-bold text-indigo-400 block">{rooms.length}</strong>
+                      <strong className="text-lg font-bold text-blue-400 block">{rooms.length}</strong>
                       <span className="text-[10px] text-slate-400">Available Rooms</span>
                     </div>
                   </div>
@@ -495,7 +502,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <button
                     type="button"
                     onClick={() => setCurrentPage('submissions')}
-                    className="text-xs font-semibold text-indigo-400 hover:text-indigo-300"
+                    className="text-xs font-semibold text-emerald-400 hover:text-emerald-300"
                   >
                     View All Submissions &gt;
                   </button>
@@ -525,7 +532,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <td className="py-3 px-3 font-medium text-white">
                               {attempt.participantName ? `${attempt.participantName} (${attempt.participantId})` : attempt.participantId}
                             </td>
-                            <td className="py-3 px-3 font-mono text-indigo-300 font-bold">{attempt.roomNumber}</td>
+                            <td className="py-3 px-3 font-mono text-emerald-300 font-bold">{attempt.roomNumber}</td>
                             <td className="py-3 px-3 text-slate-300">{attempt.examTitle}</td>
                             <td className="py-3 px-3 text-slate-400">{new Date(attempt.startedAt).toLocaleTimeString()}</td>
                             <td className="py-3 px-3 text-slate-300">{formatDuration(attempt.durationSeconds)}</td>
@@ -537,7 +544,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                   ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                                   : attempt.status === 'Time Expired'
                                   ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                  : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                               }`}>
                                 {attempt.status === 'Terminated' ? 'Ejected' : attempt.status}
                               </span>
@@ -591,7 +598,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     setEditingRoom(null);
                     setCreateModalOpen(true);
                   }}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-600/25 flex items-center gap-2"
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/25 flex items-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Create Room</span>
@@ -604,7 +611,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <button
                     type="button"
                     onClick={() => setCreateModalOpen(true)}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold"
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold"
                   >
                     Create Your First Room
                   </button>
@@ -636,7 +643,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                               <button
                                 type="button"
                                 onClick={() => copyToClipboard(room.roomNumber, `room-${room.id}`)}
-                                className="text-xs px-2 py-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg font-medium flex items-center gap-1"
+                                className="text-xs px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg font-medium flex items-center gap-1"
                               >
                                 <Copy className="w-3 h-3" />
                                 <span>{copiedId === `room-${room.id}` ? 'Copied' : 'Copy'}</span>
@@ -664,7 +671,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         {/* Passcode Box */}
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-800 text-xs">
                           <span className="text-slate-400">Passcode:</span>
-                          <strong className="font-mono text-indigo-300 font-bold tracking-wider">{room.passcode}</strong>
+                          <strong className="font-mono text-emerald-300 font-bold tracking-wider">{room.passcode}</strong>
                           <button
                             type="button"
                             onClick={() => copyToClipboard(room.passcode, `pass-${room.id}`)}
@@ -704,7 +711,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           </div>
                           <div className="p-2 bg-slate-950/50 rounded-xl">
                             <span className="text-[9px] text-slate-400 uppercase block">Live Now</span>
-                            <strong className="text-xs text-indigo-400">{roomLive}</strong>
+                            <strong className="text-xs text-emerald-400">{roomLive}</strong>
                           </div>
                           <div className="p-2 bg-slate-950/50 rounded-xl">
                             <span className="text-[9px] text-slate-400 uppercase block">Submissions</span>
@@ -791,7 +798,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     value={searchFilter}
                     onChange={(e) => setSearchFilter(e.target.value)}
                     placeholder="Search by participant name, ID, or room..."
-                    className="w-full pl-10 pr-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full pl-10 pr-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
@@ -850,7 +857,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 </span>
                               )}
                             </td>
-                            <td className="py-3 px-4 font-mono font-bold text-indigo-300">
+                            <td className="py-3 px-4 font-mono font-bold text-emerald-300">
                               {attempt.roomNumber}
                             </td>
                             <td className="py-3 px-4 text-slate-300">{attempt.examTitle}</td>
@@ -871,7 +878,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                   ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                                   : attempt.status === 'Time Expired'
                                   ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                  : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                               }`}>
                                 {attempt.status === 'Terminated' ? 'Ejected / Terminated' : attempt.status}
                               </span>
@@ -945,7 +952,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <td className="py-3 px-4 font-mono text-white font-medium">
                               {vio.participantId}
                             </td>
-                            <td className="py-3 px-4 font-mono font-bold text-indigo-300">
+                            <td className="py-3 px-4 font-mono font-bold text-emerald-300">
                               {vio.roomNumber}
                             </td>
                             <td className="py-3 px-4 text-slate-300">{vio.examTitle}</td>
@@ -1000,7 +1007,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                     Live In Progress
                   </span>
-                  <strong className="text-3xl font-black text-indigo-400">{liveSessions}</strong>
+                  <strong className="text-3xl font-black text-emerald-400">{liveSessions}</strong>
                   <span className="text-xs text-slate-400 block mt-1">Currently taking exam</span>
                 </div>
               </div>
@@ -1023,7 +1030,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         </div>
                         <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400"
+                            className="h-full bg-gradient-to-r from-emerald-500 to-blue-500"
                             style={{ width: `${percent}%` }}
                           />
                         </div>
@@ -1095,13 +1102,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
                 <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 text-xs space-y-1 font-mono text-slate-300">
                   <div>Username: <span className="text-white font-bold">{adminSession.adminUsername}</span></div>
-                  <div>Role: <span className="text-indigo-400 font-semibold">System Administrator</span></div>
+                  <div>Role: <span className="text-emerald-400 font-semibold">System Administrator</span></div>
                 </div>
 
                 {/* Change Password Form */}
                 <form onSubmit={handleChangePassword} className="p-5 rounded-2xl bg-slate-950/40 border border-slate-800 space-y-4">
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
-                    <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                    <Lock className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Change Admin Password</span>
                   </div>
 
@@ -1130,7 +1137,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         value={currentPw}
                         onChange={(e) => setCurrentPw(e.target.value)}
                         placeholder="Current password"
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500"
                       />
                     </div>
                     <div>
@@ -1140,7 +1147,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         value={newPw}
                         onChange={(e) => setNewPw(e.target.value)}
                         placeholder="New password"
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500"
                       />
                     </div>
                     <div>
@@ -1150,7 +1157,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         value={confirmPw}
                         onChange={(e) => setConfirmPw(e.target.value)}
                         placeholder="Repeat new password"
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500"
                       />
                     </div>
                   </div>
@@ -1159,7 +1166,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <button
                       type="submit"
                       disabled={pwChangeLoading || !newPw}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                      className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
                     >
                       <KeyRound className="w-3.5 h-3.5" />
                       <span>{pwChangeLoading ? 'Updating...' : 'Update Password'}</span>
@@ -1210,7 +1217,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           <div className="w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-2xl p-6 shadow-2xl space-y-5">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">ROOM OVERVIEW</span>
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">ROOM OVERVIEW</span>
                 <h3 className="text-lg font-bold text-white mt-0.5">{viewRoomModal.title}</h3>
               </div>
               <button
@@ -1231,7 +1238,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
               <div className="p-3 bg-slate-800/60 border border-slate-700/60 rounded-xl">
                 <span className="text-[10px] text-slate-400 uppercase block">Passcode</span>
-                <strong className="text-xl font-mono text-indigo-300 tracking-wider block mt-0.5">
+                <strong className="text-xl font-mono text-emerald-300 tracking-wider block mt-0.5">
                   {viewRoomModal.passcode}
                 </strong>
               </div>

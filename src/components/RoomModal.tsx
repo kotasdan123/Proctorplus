@@ -95,7 +95,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-800 bg-slate-900/80">
           <div>
-            <span className="text-[11px] font-bold tracking-wider text-indigo-400 uppercase">
+            <span className="text-[11px] font-bold tracking-wider text-emerald-400 uppercase">
               {isEditing ? 'EDIT EXAMINATION' : 'NEW EXAMINATION ROOM'}
             </span>
             <h2 className="text-xl font-bold text-white mt-0.5">
@@ -113,8 +113,8 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
 
         {/* Notice */}
         <div className="px-6 pt-5">
-          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/20 text-indigo-200 text-xs leading-relaxed">
-            <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-900 border border-slate-700 text-emerald-200 text-xs leading-relaxed">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
             <div>
               <strong className="text-white font-semibold block mb-0.5">Multi-Computer Shared Room</strong>
               You can type your own custom Room Number and Passcode below, or generate random ones. Multiple computers can join this room at the same time using these credentials.
@@ -138,7 +138,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
               <button
                 type="button"
                 onClick={handleRegenerate}
-                className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Generate Random</span>
@@ -156,7 +156,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                   value={roomNumber}
                   onChange={(e) => setRoomNumber(e.target.value)}
                   placeholder="e.g. 101202 or MATH-101"
-                  className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white font-mono text-base tracking-wider focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white font-mono text-base tracking-wider focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-colors"
                 />
                 <span className="text-[11px] text-slate-500 mt-1 block">Students type this to locate the exam</span>
               </div>
@@ -171,7 +171,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                   value={passcode}
                   onChange={(e) => setPasscode(e.target.value)}
                   placeholder="e.g. PASS99"
-                  className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white font-mono text-base tracking-wider focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white font-mono text-base tracking-wider focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-colors"
                 />
                 <span className="text-[11px] text-slate-500 mt-1 block">Security key required to enter room</span>
               </div>
@@ -190,7 +190,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Midterm Examination - Computer Science 101"
-                className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-colors"
               />
             </div>
 
@@ -203,14 +203,14 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Instructions displayed to students before starting the examination..."
-                className="w-full px-3.5 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors resize-none"
+                className="w-full px-3.5 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-colors resize-none"
               />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center justify-between">
                 <span>Google Forms URL <span className="text-red-400">*</span></span>
-                <span className="text-[11px] text-indigo-400 font-normal">Pasted link opens directly inside proctored exam</span>
+                <span className="text-[11px] text-emerald-400 font-normal">Pasted link opens directly inside proctored exam</span>
               </label>
               <input
                 type="url"
@@ -218,7 +218,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                 value={formUrl}
                 onChange={(e) => setFormUrl(e.target.value)}
                 placeholder="https://docs.google.com/forms/d/e/.../viewform?embedded=true"
-                className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-colors"
+                className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-colors"
               />
               <p className="text-[11px] text-slate-500 mt-1">
                 Tip: In Google Forms, click <strong>Send &gt; Embed HTML (&lt;&gt;)</strong> or copy the regular view link. Students will take this form in the anti-cheat window.
@@ -235,10 +235,10 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                   id="timerEnabled"
                   checked={timerEnabled}
                   onChange={(e) => setTimerEnabled(e.target.checked)}
-                  className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 w-4 h-4 bg-slate-900"
+                  className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4 bg-slate-900"
                 />
                 <label htmlFor="timerEnabled" className="text-xs font-medium text-slate-300 flex items-center gap-1.5 cursor-pointer">
-                  <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Countdown Timer</span>
                 </label>
               </div>
@@ -263,7 +263,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                   id="antiCheat"
                   checked={antiCheat}
                   onChange={(e) => setAntiCheat(e.target.checked)}
-                  className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 w-4 h-4 bg-slate-900"
+                  className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4 bg-slate-900"
                 />
                 <label htmlFor="antiCheat" className="text-xs font-medium text-slate-300 flex items-center gap-1.5 cursor-pointer">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -299,7 +299,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                 type="datetime-local"
                 value={startAt}
                 onChange={(e) => setStartAt(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-indigo-500"
+                className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
               />
             </div>
             <div>
@@ -308,7 +308,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                 type="datetime-local"
                 value={endAt}
                 onChange={(e) => setEndAt(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-indigo-500"
+                className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
               />
             </div>
           </div>
@@ -319,7 +319,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
               id="roomActive"
               checked={active}
               onChange={(e) => setActive(e.target.checked)}
-              className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 w-4 h-4 bg-slate-900"
+              className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4 bg-slate-900"
             />
             <label htmlFor="roomActive" className="text-xs text-slate-300 font-medium cursor-pointer">
               Room is currently Active (examinees can join immediately)
@@ -338,7 +338,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 rounded-xl shadow-lg shadow-indigo-600/20 disabled:opacity-50 transition-all"
+              className="px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 rounded-xl shadow-lg shadow-emerald-600/20 disabled:opacity-50 transition-all"
             >
               {loading ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Examination Room'}
             </button>

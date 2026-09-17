@@ -172,17 +172,17 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
                 onClick={() => setSyncMode('server')}
                 className={`flex items-start gap-3 p-4 rounded-xl border text-left transition-all ${
                   syncMode === 'server'
-                    ? 'bg-indigo-950/50 border-indigo-500 ring-1 ring-indigo-500 text-white'
+                    ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500 text-white'
                     : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-800/80'
                 }`}
               >
-                <div className={`p-2 rounded-lg ${syncMode === 'server' ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                <div className={`p-2 rounded-lg ${syncMode === 'server' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
                   <Server className="w-4 h-4" />
                 </div>
                 <div>
                   <div className="font-semibold text-sm flex items-center gap-1.5">
                     <span>Built-in Server Sync</span>
-                    {syncMode === 'server' && <span className="text-[10px] bg-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded font-bold">ACTIVE</span>}
+                    {syncMode === 'server' && <span className="text-[10px] bg-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded font-bold">ACTIVE</span>}
                   </div>
                   <p className="text-xs text-slate-400 mt-1 leading-normal">
                     Instant multi-PC sync on this portal. Any computer on the link can join rooms without needing Firebase.
