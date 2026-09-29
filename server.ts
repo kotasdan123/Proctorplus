@@ -8,6 +8,14 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Prevent stale browser caching during updates
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Data storage file path
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'proctor_db.json');
