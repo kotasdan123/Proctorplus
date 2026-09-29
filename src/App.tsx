@@ -28,7 +28,6 @@ import { LiveExamView } from './components/LiveExamView';
 import { ResultView } from './components/ResultView';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { LoadingScreen } from './components/LoadingScreen';
-import { DevToolsBlockedModal } from './components/DevToolsBlockedModal';
 import { SecurityToast } from './components/SecurityToast';
 
 const SESSION_STORAGE_KEY = 'proctor_plus_session_v5';
@@ -69,8 +68,7 @@ export default function App() {
     subtext?: string;
   } | null>(null);
 
-  // Security Shield & DevTools Blocking States
-  const [devToolsBlocked, setDevToolsBlocked] = useState(false);
+  // Security Shield Keyboard & Context-Menu Notification State
   const [securityNotice, setSecurityNotice] = useState<string | null>(null);
 
   // Initialize Anti-Developer Tools & Security Shield
@@ -82,12 +80,7 @@ export default function App() {
       }, 3500);
     });
 
-    const unsubscribe = securityShield.subscribe((isOpen) => {
-      setDevToolsBlocked(isOpen);
-    });
-
     return () => {
-      unsubscribe();
       securityShield.destroy();
     };
   }, []);
@@ -349,16 +342,6 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 select-none">
       {/* Active Application View */}
       {renderCurrentView()}
-
-      {/* Developer Tools Tamper Shield Modal */}
-      {devToolsBlocked && (
-        <DevToolsBlockedModal
-          onDismissCheck={() => {
-            const stillOpen = securityShield.isDevToolsOpen();
-            setDevToolsBlocked(stillOpen);
-          }}
-        />
-      )}
 
       {/* HUD Security Interception Toast */}
       <SecurityToast

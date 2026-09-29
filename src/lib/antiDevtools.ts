@@ -1,20 +1,14 @@
 /**
- * PROCTOR+ Anti-Tamper & Developer Tools Security Shield
+ * PROCTOR+ Anti-Tamper & Code Protection Shield
  * Defends the portal against unauthorized developer tools inspection, source code extraction,
- * DOM tampering, keyboard shortcut inspection, and debugging probes.
+ * DOM tampering, keyboard shortcut inspection, and right-click element inspection.
  */
 
-type DevToolsChangeCallback = (isOpen: boolean) => void;
-
 class AntiDevToolsShield {
-  private isOpen: boolean = false;
-  private listeners: Set<DevToolsChangeCallback> = new Set();
-  private checkIntervalId: any = null;
   private initialized: boolean = false;
   private noticeCallback: ((msg: string) => void) | null = null;
 
   constructor() {
-    // Only browser environment
     if (typeof window === 'undefined') return;
   }
 
@@ -26,32 +20,6 @@ class AntiDevToolsShield {
     this.installKeyBlocker();
     this.installContextMenuBlocker();
     this.hardenConsole();
-    this.startDetection();
-  }
-
-  public subscribe(cb: DevToolsChangeCallback): () => void {
-    this.listeners.add(cb);
-    cb(this.isOpen);
-    return () => {
-      this.listeners.delete(cb);
-    };
-  }
-
-  public isDevToolsOpen(): boolean {
-    return this.isOpen;
-  }
-
-  private notify(isOpen: boolean) {
-    if (this.isOpen !== isOpen) {
-      this.isOpen = isOpen;
-      this.listeners.forEach((cb) => {
-        try {
-          cb(isOpen);
-        } catch {
-          // ignore
-        }
-      });
-    }
   }
 
   private triggerNotice(msg: string) {
@@ -74,7 +42,7 @@ class AntiDevToolsShield {
         if (e.key === 'F12' || e.keyCode === 123) {
           e.preventDefault();
           e.stopPropagation();
-          this.triggerNotice('F12 Developer Tools shortcut is disabled by PROCTOR+ Shield.');
+          this.triggerNotice('F12 Developer Tools shortcut is restricted by PROCTOR+ Shield.');
           return false;
         }
 
@@ -89,15 +57,18 @@ class AntiDevToolsShield {
         ) {
           e.preventDefault();
           e.stopPropagation();
-          this.triggerNotice('Developer Inspection tools are disabled.');
+          this.triggerNotice('Developer Inspection tools are restricted by PROCTOR+ Shield.');
           return false;
         }
 
         // Ctrl+U / Cmd+Option+U -> View Page Source
-        if ((ctrlOrCmd && (e.key === 'u' || e.key === 'U')) || (isMac && e.metaKey && e.altKey && (e.key === 'u' || e.key === 'U'))) {
+        if (
+          (ctrlOrCmd && (e.key === 'u' || e.key === 'U')) ||
+          (isMac && e.metaKey && e.altKey && (e.key === 'u' || e.key === 'U'))
+        ) {
           e.preventDefault();
           e.stopPropagation();
-          this.triggerNotice('View Source is blocked for security.');
+          this.triggerNotice('View Page Source is blocked for security.');
           return false;
         }
 
@@ -113,7 +84,7 @@ class AntiDevToolsShield {
         if (ctrlOrCmd && (e.key === 'p' || e.key === 'P')) {
           e.preventDefault();
           e.stopPropagation();
-          this.triggerNotice('Document printing is disabled.');
+          this.triggerNotice('Document printing is disabled on PROCTOR+.');
           return false;
         }
 
@@ -142,7 +113,7 @@ class AntiDevToolsShield {
         if (!isInputField) {
           e.preventDefault();
           e.stopPropagation();
-          this.triggerNotice('Right-click context menu is restricted on PROCTOR+.');
+          this.triggerNotice('Right-click inspection is disabled by PROCTOR+ Shield.');
           return false;
         }
       },
@@ -160,11 +131,6 @@ class AntiDevToolsShield {
    */
   private hardenConsole() {
     try {
-      const shieldNotice = () => {
-        // Clean banner
-      };
-
-      // In production mode, sanitize standard logging
       if (typeof window !== 'undefined' && (window as any).console) {
         const originalLog = console.log;
         const bannerStyles = [
@@ -177,67 +143,15 @@ class AntiDevToolsShield {
           'border-radius: 6px'
         ].join(';');
 
-        originalLog('%c🔒 PROCTOR+ SECURITY SHIELD ACTIVE — Unauthorized Inspection Prohibited', bannerStyles);
+        originalLog('%c🔒 PROCTOR+ SECURITY SHIELD ACTIVE — Source Inspection Prohibited', bannerStyles);
       }
     } catch {
       // ignore
     }
   }
 
-  /**
-   * Detect DevTools via dimensional differential and debugger timing
-   */
-  private startDetection() {
-    const checkDevTools = () => {
-      try {
-        // Method 1: Window size differential (DevTools docked at bottom/side)
-        const widthThreshold = window.outerWidth - window.innerWidth > 160;
-        const heightThreshold = window.outerHeight - window.innerHeight > 160;
-
-        let detected = false;
-        if (widthThreshold || heightThreshold) {
-          detected = true;
-        }
-
-        // Method 2: High precision debugger timing probe
-        const start = performance.now();
-        // eslint-disable-next-line no-debugger
-        debugger;
-        const diff = performance.now() - start;
-        if (diff > 120) {
-          detected = true;
-        }
-
-        // Method 3: Console element inspection getter
-        const detector = /./;
-        let getterTriggered = false;
-        detector.toString = function () {
-          getterTriggered = true;
-          return '';
-        };
-        // Trigger getter if console is open and evaluating
-        console.debug?.(detector);
-        if (getterTriggered) {
-          detected = true;
-        }
-
-        this.notify(detected);
-      } catch {
-        // ignore
-      }
-    };
-
-    // Check periodically
-    this.checkIntervalId = setInterval(checkDevTools, 1200);
-
-    // Also check on window resize
-    window.addEventListener('resize', checkDevTools);
-  }
-
   public destroy() {
-    if (this.checkIntervalId) {
-      clearInterval(this.checkIntervalId);
-    }
+    // cleanup
   }
 }
 
