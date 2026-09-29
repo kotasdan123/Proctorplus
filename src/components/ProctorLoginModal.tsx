@@ -1,0 +1,214 @@
+import React, { useState } from 'react';
+import {
+  X,
+  ShieldCheck,
+  Lock,
+  User,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Shield,
+  ArrowRight,
+  Sparkles
+} from 'lucide-react';
+import { loginAuth } from '../lib/api';
+import { LoadingScreen } from './LoadingScreen';
+
+interface ProctorLoginModalProps {
+  onClose: () => void;
+  onSuccess: (sessionData: {
+    role: 'superadmin' | 'proctor';
+    username: string;
+    name: string;
+    proctorId?: string;
+  }) => void;
+}
+
+export const ProctorLoginModal: React.FC<ProctorLoginModalProps> = ({
+  onClose,
+  onSuccess
+}) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    const cleanUser = username.trim();
+    const cleanPass = password.trim();
+
+    if (!cleanUser || !cleanPass) {
+      setError('Please enter both username and password.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await loginAuth(cleanUser, cleanPass);
+      if (res.success) {
+        if (res.role === 'superadmin') {
+          onSuccess({
+            role: 'superadmin',
+            username: res.admin?.username || 'admin',
+            name: res.admin?.name || 'Super Administrator'
+          });
+        } else {
+          onSuccess({
+            role: 'proctor',
+            username: res.proctor?.username || cleanUser,
+            name: res.proctor?.name || 'Exam Proctor',
+            proctorId: res.proctor?.id
+          });
+        }
+        onClose();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Incorrect credentials. Please verify your login details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fillQuickCredentials = (u: string, p: string) => {
+    setUsername(u);
+    setPassword(p);
+    setError(null);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div className="relative w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-800 bg-slate-900/90">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[11px] font-black tracking-wider uppercase text-emerald-400">
+                PROCTOR &amp; ADMINISTRATION
+              </span>
+              <h2 className="text-xl font-black text-white">Proctor Login</h2>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4" autoComplete="off">
+          {error && (
+            <div className="flex items-center gap-2 p-3 text-xs text-red-300 bg-red-950/60 border border-red-800 rounded-xl">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              Username
+            </label>
+            <div className="relative">
+              <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                required
+                autoComplete="off"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter username (e.g. proctor, admin)"
+                className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-colors"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              Password
+            </label>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-colors"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Credential Pre-fill Badges */}
+          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5 text-[11px]">
+            <span className="text-slate-500 font-bold block uppercase tracking-wider text-[10px]">
+              Quick Fill Credentials:
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fillQuickCredentials('admin', '123admin')}
+                className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors font-mono"
+              >
+                Super Admin: <strong>admin</strong> / <strong>123admin</strong>
+              </button>
+              <button
+                type="button"
+                onClick={() => fillQuickCredentials('proctor', 'proctor123')}
+                className="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-colors font-mono"
+              >
+                Proctor: <strong>proctor</strong> / <strong>proctor123</strong>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-800 rounded-xl transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-5 py-2 text-sm font-bold text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 rounded-xl shadow-lg shadow-emerald-600/20 disabled:opacity-50 transition-all"
+            >
+              {loading ? 'Authenticating...' : 'Sign In'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {loading && (
+        <LoadingScreen
+          message="Authenticating Portal Session..."
+          subtext="Validating access credentials & security privileges"
+        />
+      )}
+    </div>
+  );
+};
+
+// Re-export for compatibility with older imports
+export const AdminLoginModal = ProctorLoginModal;

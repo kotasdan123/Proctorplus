@@ -6,13 +6,15 @@ import { LoadingScreen } from './LoadingScreen';
 
 interface LoginViewProps {
   onRoomJoined: (session: ParticipantSession, room: ExamRoom) => void;
-  onOpenAdminLogin: () => void;
+  onOpenProctorLogin: () => void;
+  onOpenAdminLogin?: () => void;
   connectedPCs: number;
   syncMode: 'server' | 'firebase';
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
   onRoomJoined,
+  onOpenProctorLogin,
   onOpenAdminLogin,
   connectedPCs,
   syncMode
@@ -83,13 +85,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Proctor Login */}
           <button
             type="button"
-            onClick={onOpenAdminLogin}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 hover:text-emerald-400 transition-all hover:border-emerald-500/40"
+            onClick={onOpenProctorLogin || onOpenAdminLogin}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 hover:text-emerald-400 transition-all hover:border-emerald-500/40 shadow-sm"
           >
-            <Lock className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Admin Login</span>
+            <Shield className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Proctor Login</span>
             <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
           </button>
         </div>

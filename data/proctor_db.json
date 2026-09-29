@@ -86,6 +86,29 @@
       "timestamp": 1789558579947
     }
   },
+  "proctors": {
+    "proctor-1": {
+      "id": "proctor-1",
+      "username": "proctor",
+      "password": "proctor123",
+      "name": "Lead Proctor Alpha",
+      "email": "proctor@proctorplus.internal",
+      "notes": "Default examination supervisor",
+      "active": true,
+      "createdAt": 1790085689320,
+      "lastLoginAt": 1790690509206
+    },
+    "proctor-2": {
+      "id": "proctor-2",
+      "username": "proctor1",
+      "password": "123proctor",
+      "name": "Exam Proctor Beta",
+      "email": "proctor1@proctorplus.internal",
+      "notes": "Secondary examination room supervisor",
+      "active": true,
+      "createdAt": 1790431289320
+    }
+  },
   "sheetData": {
     "url": "https://docs.google.com/spreadsheets/d/1Fa_x25xdW0hQP_zWNavmRLaHmpyTHpgUObczmcx-ETE/edit?usp=sharing",
     "lastSyncedAt": 1789561470569,

@@ -13,7 +13,8 @@ export interface ExamRoom {
   endAt?: string;
   active: boolean;
   createdAt: number;
-  createdBy: string;
+  createdBy: string; // e.g. proctor username or name
+  createdByProctor?: string; // friendly proctor attribution
 }
 
 export type AttemptStatus = 'In Progress' | 'Completed' | 'Time Expired' | 'Terminated';
@@ -66,6 +67,19 @@ export interface SystemConfig {
   };
 }
 
+export interface ProctorAccount {
+  id: string;
+  username: string;
+  password: string;
+  name: string;
+  email?: string;
+  notes?: string;
+  active: boolean;
+  createdAt: number;
+  lastLoginAt?: number;
+  roomsCount?: number;
+}
+
 export interface ParticipantSession {
   role: 'room';
   roomId: string;
@@ -75,13 +89,29 @@ export interface ParticipantSession {
   activeAttemptId?: string;
 }
 
-export interface AdminSession {
-  role: 'admin';
-  adminUsername: string;
+export interface ProctorSession {
+  role: 'proctor';
+  proctorId?: string;
+  username: string;
   name: string;
 }
 
-export type UserSession = ParticipantSession | AdminSession | null;
+export interface SuperAdminSession {
+  role: 'superadmin';
+  username: string;
+  name: string;
+}
+
+// Backwards-compatibility alias for previous admin session
+export interface AdminSession {
+  role: 'admin' | 'superadmin' | 'proctor';
+  adminUsername?: string;
+  username?: string;
+  name: string;
+  proctorId?: string;
+}
+
+export type UserSession = ParticipantSession | ProctorSession | SuperAdminSession | AdminSession | null;
 
 export interface SheetData {
   url: string;

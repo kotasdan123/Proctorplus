@@ -33,6 +33,15 @@ service cloud.firestore {
       allow delete: if isValidId(adminId);
     }
 
+    // Proctor accounts: Managed by Super Admin
+    match /proctors/{proctorId} {
+      allow read: if isValidId(proctorId);
+      allow create, update: if isValidId(proctorId)
+        && request.resource.data.username is string
+        && request.resource.data.username.size() > 0;
+      allow delete: if isValidId(proctorId);
+    }
+
     // Exam attempts: Created and updated by examinees and proctor dashboard
     match /attempts/{attemptId} {
       allow read: if isValidId(attemptId);

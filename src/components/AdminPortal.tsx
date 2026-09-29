@@ -187,7 +187,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <span className="font-extrabold tracking-tight text-white text-base">
                 Proctor<span className="text-emerald-400">+</span>
               </span>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Admin Control Center</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Proctor Control Center</p>
             </div>
           </div>
 
@@ -308,7 +308,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
             <div className="min-w-0">
               <div className="text-xs font-semibold text-white truncate">{adminSession.name}</div>
-              <div className="text-[10px] text-slate-400 truncate">Administrator</div>
+              <div className="text-[10px] text-emerald-400 font-bold uppercase truncate">Exam Proctor</div>
             </div>
           </div>
           <button
@@ -1214,7 +1214,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             if (editingRoom) {
               await onUpdateRoom(editingRoom.id, roomData);
             } else {
-              await onCreateRoom(roomData);
+              await onCreateRoom({
+                ...roomData,
+                createdBy: (adminSession as any).username || (adminSession as any).adminUsername || 'proctor',
+                createdByProctor: adminSession.name || 'Proctor'
+              });
             }
           }}
         />

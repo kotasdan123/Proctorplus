@@ -36,6 +36,23 @@
       },
       "required": ["username", "password"]
     },
+    "Proctor": {
+      "title": "Proctor",
+      "description": "Proctor accounts managed by Super Admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "notes": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "lastLoginAt": { "type": "number" }
+      },
+      "required": ["username", "password", "name"]
+    },
     "Attempt": {
       "title": "Attempt",
       "description": "Student examination attempt session",
@@ -83,6 +100,10 @@
     "/admins/{adminId}": {
       "schema": "Admin",
       "description": "Admin accounts for managing rooms and exams"
+    },
+    "/proctors/{proctorId}": {
+      "schema": "Proctor",
+      "description": "Proctor accounts controlled by Super Admin"
     },
     "/attempts/{attemptId}": {
       "schema": "Attempt",

@@ -1,4 +1,12 @@
-import { ExamRoom, ExamAttempt, SecurityViolation, SystemConfig, FirebaseConfig, SheetData } from '../types';
+import {
+  ExamRoom,
+  ExamAttempt,
+  SecurityViolation,
+  SystemConfig,
+  FirebaseConfig,
+  SheetData,
+  ProctorAccount
+} from '../types';
 import {
   collection,
   doc,
@@ -24,6 +32,7 @@ export const getBaseUrl = (): string => {
 };
 
 const PROCTOR_ADMIN_KEY = 'proctor_admin_creds_v2';
+const PROCTOR_PROCTORS_KEY = 'proctor_proctors_cache_v2';
 const PROCTOR_ROOMS_KEY = 'proctor_rooms_cache_v2';
 const PROCTOR_ATTEMPTS_KEY = 'proctor_attempts_cache_v2';
 const PROCTOR_VIOLATIONS_KEY = 'proctor_violations_cache_v2';
@@ -32,8 +41,34 @@ const PROCTOR_SHEET_KEY = 'proctor_sheet_cache_v2';
 export const DEFAULT_ADMIN = {
   username: 'admin',
   password: '123admin',
-  name: 'System Administrator'
+  name: 'Super Administrator'
 };
+
+export const DEFAULT_PROCTORS: ProctorAccount[] = [
+  {
+    id: 'proctor-1',
+    username: 'proctor',
+    password: 'proctor123',
+    name: 'Lead Proctor Alpha',
+    email: 'proctor@proctorplus.internal',
+    notes: 'Primary examination room supervisor',
+    active: true,
+    createdAt: Date.now() - 86400000 * 7,
+    lastLoginAt: Date.now() - 3600000,
+    roomsCount: 1
+  },
+  {
+    id: 'proctor-2',
+    username: 'proctor1',
+    password: '123proctor',
+    name: 'Exam Proctor Beta',
+    email: 'proctor1@proctorplus.internal',
+    notes: 'Secondary examination room supervisor',
+    active: true,
+    createdAt: Date.now() - 86400000 * 3,
+    roomsCount: 0
+  }
+];
 
 export const DEFAULT_ROOMS: ExamRoom[] = [
   {
@@ -51,9 +86,31 @@ export const DEFAULT_ROOMS: ExamRoom[] = [
     endAt: '',
     active: true,
     createdAt: Date.now() - 3600000,
-    createdBy: 'admin'
+    createdBy: 'proctor',
+    createdByProctor: 'Lead Proctor Alpha'
   }
 ];
+
+export function getLocalProctors(): ProctorAccount[] {
+  try {
+    const saved = localStorage.getItem(PROCTOR_PROCTORS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    // Fallback
+  }
+  return DEFAULT_PROCTORS;
+}
+
+export function saveLocalProctors(proctors: ProctorAccount[]) {
+  try {
+    localStorage.setItem(PROCTOR_PROCTORS_KEY, JSON.stringify(proctors));
+  } catch {
+    // Ignore quota
+  }
+}
 
 // Helper functions for Local Storage caching & offline fallback
 function getLocalAdminCreds() {
@@ -239,9 +296,11 @@ export async function updateFirebaseConfig(payload: {
   return { success: true, config };
 }
 
-export async function adminLogin(username: string, password: string): Promise<{
+export async function loginAuth(username: string, password: string): Promise<{
   success: boolean;
-  admin: { username: string; name: string };
+  role: 'superadmin' | 'proctor';
+  admin?: { username: string; name: string };
+  proctor?: { id: string; username: string; name: string; email?: string };
 }> {
   const cleanUser = String(username || '').trim();
   const cleanPass = String(password || '').trim();
@@ -250,50 +309,152 @@ export async function adminLogin(username: string, password: string): Promise<{
     throw new Error('Username and password are required');
   }
 
-  // 1. Check Google Cloud Firestore admins collection
+  // 1. Try Express backend unified auth endpoint
   try {
-    await initFirestoreDefaults();
-    const adminDocRef = doc(db, 'admins', 'default');
-    const adminSnap = await getDoc(adminDocRef);
-
-    if (adminSnap.exists()) {
-      const data = adminSnap.data();
-      if (
-        (cleanUser.toLowerCase() === String(data.username || '').toLowerCase() && cleanPass === String(data.password)) ||
-        (cleanUser.toLowerCase() === 'admin' && cleanPass === '123admin')
-      ) {
-        const adminProfile = {
-          username: data.username || cleanUser,
-          name: data.name || 'System Administrator'
-        };
-        saveLocalAdminCreds({
-          username: adminProfile.username,
-          password: cleanPass,
-          name: adminProfile.name
-        });
-        return { success: true, admin: adminProfile };
-      }
+    const res = await fetch(`${getBaseUrl()}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify({ username: cleanUser, password: cleanPass })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
     }
-  } catch (err) {
-    console.warn('Firestore admin check failed, checking local credentials:', err);
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Account deactivated. Please contact Super Admin.');
+    }
+    if (res.status === 401) {
+      throw new Error('Incorrect username or password');
+    }
+  } catch (err: any) {
+    if (err.message && (err.message.includes('deactivated') || err.message.includes('Incorrect'))) {
+      throw err;
+    }
+    // Network fallback
   }
 
-  // 2. Fallback check for offline / default
-  const localCreds = getLocalAdminCreds();
-  if (
-    (cleanUser.toLowerCase() === 'admin' && cleanPass === '123admin') ||
-    (cleanUser.toLowerCase() === localCreds.username.toLowerCase() && cleanPass === localCreds.password)
-  ) {
+  // 2. Client-side fallback check:
+  // Super admin check:
+  if (cleanUser.toLowerCase() === 'admin' && cleanPass === '123admin') {
     return {
       success: true,
+      role: 'superadmin',
       admin: {
-        username: localCreds.username || 'admin',
-        name: localCreds.name || 'System Administrator'
+        username: 'admin',
+        name: 'Super Administrator'
       }
     };
   }
 
-  throw new Error('Incorrect administrator username or password');
+  // Proctors fallback check:
+  const localProctors = getLocalProctors();
+  const matched = localProctors.find(p => p.username.toLowerCase() === cleanUser.toLowerCase());
+  if (matched) {
+    if (matched.password !== cleanPass) {
+      throw new Error('Incorrect proctor password');
+    }
+    if (matched.active === false) {
+      throw new Error('This proctor account has been deactivated. Please contact Super Admin.');
+    }
+    return {
+      success: true,
+      role: 'proctor',
+      proctor: {
+        id: matched.id,
+        username: matched.username,
+        name: matched.name,
+        email: matched.email
+      }
+    };
+  }
+
+  throw new Error('Incorrect username or password');
+}
+
+export async function adminLogin(username: string, password: string): Promise<{
+  success: boolean;
+  role?: 'superadmin' | 'proctor';
+  admin: { username: string; name: string };
+  proctor?: { id: string; username: string; name: string; email?: string };
+}> {
+  const result = await loginAuth(username, password);
+  return {
+    success: true,
+    role: result.role,
+    admin: result.admin || {
+      username: result.proctor?.username || username,
+      name: result.proctor?.name || 'Proctor'
+    },
+    proctor: result.proctor
+  };
+}
+
+// ---------------------------------------------------------------
+// PROCTORS API (SUPER ADMIN CONTROLS)
+// ---------------------------------------------------------------
+
+export async function fetchProctors(): Promise<ProctorAccount[]> {
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/admin/proctors`, {
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    if (res.ok) {
+      const list = await res.json();
+      saveLocalProctors(list);
+      return list;
+    }
+  } catch {
+    // fallback
+  }
+  return getLocalProctors();
+}
+
+export async function createProctor(data: Partial<ProctorAccount>): Promise<ProctorAccount> {
+  const res = await fetch(`${getBaseUrl()}/api/admin/proctors`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create proctor account');
+  }
+  const result = await res.json();
+  const proctor = result.proctor;
+  const current = getLocalProctors();
+  saveLocalProctors([proctor, ...current]);
+  return proctor;
+}
+
+export async function updateProctor(id: string, data: Partial<ProctorAccount>): Promise<ProctorAccount> {
+  const res = await fetch(`${getBaseUrl()}/api/admin/proctors/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update proctor account');
+  }
+  const result = await res.json();
+  const proctor = result.proctor;
+  const current = getLocalProctors().map(p => p.id === id ? { ...p, ...proctor } : p);
+  saveLocalProctors(current);
+  return proctor;
+}
+
+export async function deleteProctor(id: string): Promise<void> {
+  const res = await fetch(`${getBaseUrl()}/api/admin/proctors/${id}`, {
+    method: 'DELETE',
+    headers: { 'Cache-Control': 'no-cache' }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete proctor account');
+  }
+  const current = getLocalProctors().filter(p => p.id !== id);
+  saveLocalProctors(current);
 }
 
 export async function updateAdminCredentials(payload: {
@@ -370,7 +531,8 @@ export async function fetchRooms(): Promise<ExamRoom[]> {
           endAt: data.endAt || '',
           active: data.active !== false,
           createdAt: Number(data.createdAt) || Date.now(),
-          createdBy: data.createdBy || 'admin'
+          createdBy: data.createdBy || 'proctor',
+          createdByProctor: data.createdByProctor || data.createdBy || 'Proctor'
         });
       });
 
@@ -412,7 +574,8 @@ export async function createRoom(room: Partial<ExamRoom>): Promise<ExamRoom> {
     endAt: room.endAt || '',
     active: room.active !== false,
     createdAt: Date.now(),
-    createdBy: room.createdBy || 'admin'
+    createdBy: room.createdBy || 'proctor',
+    createdByProctor: room.createdByProctor || room.createdBy || 'Proctor'
   };
 
   // 1. Write directly to Google Cloud Firestore

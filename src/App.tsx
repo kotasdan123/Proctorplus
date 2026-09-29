@@ -6,7 +6,9 @@ import {
   SystemConfig,
   UserSession,
   ParticipantSession,
-  AdminSession
+  AdminSession,
+  SuperAdminSession,
+  ProctorSession
 } from './types';
 import {
   fetchRooms,
@@ -23,14 +25,15 @@ import {
 import { securityShield } from './lib/antiDevtools';
 import { LoginView } from './components/LoginView';
 import { AdminPortal } from './components/AdminPortal';
+import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { ParticipantRoomDashboard } from './components/ParticipantRoomDashboard';
 import { LiveExamView } from './components/LiveExamView';
 import { ResultView } from './components/ResultView';
-import { AdminLoginModal } from './components/AdminLoginModal';
+import { ProctorLoginModal } from './components/ProctorLoginModal';
 import { LoadingScreen } from './components/LoadingScreen';
 import { SecurityToast } from './components/SecurityToast';
 
-const SESSION_STORAGE_KEY = 'proctor_plus_session_v5';
+const SESSION_STORAGE_KEY = 'proctor_plus_session_v6';
 
 export default function App() {
   const [session, setSession] = useState<UserSession>(() => {
@@ -58,7 +61,8 @@ export default function App() {
     terminationReason?: string;
   } | null>(null);
 
-  const [adminLoginOpen, setAdminLoginOpen] = useState(false);
+  // Modal Login States
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
 
   // Loading States
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -119,10 +123,9 @@ export default function App() {
     } catch (err) {
       console.error('Failed to load application data:', err);
     } finally {
-      // Smooth initial load experience
       setTimeout(() => {
         setIsInitialLoading(false);
-      }, 500);
+      }, 450);
     }
   }, [session]);
 
@@ -157,20 +160,42 @@ export default function App() {
     }, 450);
   };
 
-  const handleAdminLoggedIn = (admin: { username: string; name: string }) => {
+  const handleAuthLoggedIn = (auth: {
+    role: 'superadmin' | 'proctor';
+    username: string;
+    name: string;
+    proctorId?: string;
+  }) => {
     setTransitionLoading({
       active: true,
-      message: 'Entering Administrator Portal...',
-      subtext: 'Authenticating high-privilege access & loading control center'
+      message:
+        auth.role === 'superadmin'
+          ? 'Entering Super Admin Control...'
+          : 'Entering Proctor Control Center...',
+      subtext:
+        auth.role === 'superadmin'
+          ? 'Loading Proctor Accounts & Hierarchy Management'
+          : `Authenticated as ${auth.name} (@${auth.username})`
     });
-    const adminSession: AdminSession = {
-      role: 'admin',
-      adminUsername: admin.username,
-      name: admin.name
-    };
+
     setTimeout(() => {
-      setSession(adminSession);
-      setAdminLoginOpen(false);
+      if (auth.role === 'superadmin') {
+        const superSession: SuperAdminSession = {
+          role: 'superadmin',
+          username: auth.username,
+          name: auth.name
+        };
+        setSession(superSession);
+      } else {
+        const proctorSession: ProctorSession = {
+          role: 'proctor',
+          username: auth.username,
+          name: auth.name,
+          proctorId: auth.proctorId
+        };
+        setSession(proctorSession);
+      }
+      setLoginModalOpen(false);
       setTransitionLoading(null);
     }, 450);
   };
@@ -286,11 +311,40 @@ export default function App() {
       );
     }
 
-    // 3. Admin Control Center
-    if (session?.role === 'admin') {
+    // 3. Super Admin Control Dashboard (Separate Dashboard)
+    if (session?.role === 'superadmin') {
+      return (
+        <SuperAdminDashboard
+          superAdminSession={session}
+          rooms={rooms}
+          attempts={attempts}
+          violations={violations}
+          systemConfig={systemConfig}
+          connectedPCs={connectedPCs}
+          onLogout={handleLogout}
+          onSwitchToProctorView={() => {
+            // Temporarily switch view to proctor control center
+            setSession({
+              role: 'proctor',
+              username: session.username,
+              name: `${session.name} (Admin Preview)`
+            });
+          }}
+          onUpdateRoom={handleUpdateRoom}
+          onDeleteRoom={handleDeleteRoom}
+        />
+      );
+    }
+
+    // 4. Proctor Examination Dashboard (The old administration named Proctor)
+    if (session?.role === 'proctor' || session?.role === 'admin') {
       return (
         <AdminPortal
-          adminSession={session}
+          adminSession={{
+            role: session.role,
+            adminUsername: (session as any).username || (session as any).adminUsername || 'proctor',
+            name: session.name
+          }}
           rooms={rooms}
           attempts={attempts}
           violations={violations}
@@ -305,7 +359,7 @@ export default function App() {
       );
     }
 
-    // 4. Participant Room Dashboard
+    // 5. Participant Room Dashboard
     if (session?.role === 'room' && currentRoom) {
       return (
         <ParticipantRoomDashboard
@@ -318,20 +372,20 @@ export default function App() {
       );
     }
 
-    // 5. Default: Room Login & Brand Welcome
+    // 6. Default: Room Login & Brand Welcome
     return (
       <>
         <LoginView
           onRoomJoined={handleRoomJoined}
-          onOpenAdminLogin={() => setAdminLoginOpen(true)}
+          onOpenProctorLogin={() => setLoginModalOpen(true)}
           connectedPCs={connectedPCs}
           syncMode={systemConfig?.syncMode || 'server'}
         />
 
-        {adminLoginOpen && (
-          <AdminLoginModal
-            onClose={() => setAdminLoginOpen(false)}
-            onSuccess={handleAdminLoggedIn}
+        {loginModalOpen && (
+          <ProctorLoginModal
+            onClose={() => setLoginModalOpen(false)}
+            onSuccess={handleAuthLoggedIn}
           />
         )}
       </>

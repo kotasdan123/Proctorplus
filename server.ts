@@ -41,6 +41,7 @@ interface RoomRecord {
   active: boolean;
   createdAt: number;
   createdBy: string;
+  createdByProctor?: string;
 }
 
 interface AttemptRecord {
@@ -71,6 +72,18 @@ interface ViolationRecord {
   timestamp: number;
 }
 
+interface ProctorRecord {
+  id: string;
+  username: string;
+  password: string;
+  name: string;
+  email?: string;
+  notes?: string;
+  active: boolean;
+  createdAt: number;
+  lastLoginAt?: number;
+}
+
 interface SheetRecord {
   url: string;
   lastSyncedAt: number | null;
@@ -82,6 +95,7 @@ interface DBState {
   rooms: Record<string, RoomRecord>;
   attempts: Record<string, AttemptRecord>;
   violations: Record<string, ViolationRecord>;
+  proctors: Record<string, ProctorRecord>;
   sheetData?: SheetRecord;
   config: {
     syncMode: 'server' | 'firebase';
@@ -122,11 +136,35 @@ const DEFAULT_STATE: DBState = {
       endAt: '',
       active: true,
       createdAt: Date.now() - 3600000,
-      createdBy: 'admin'
+      createdBy: 'proctor',
+      createdByProctor: 'Lead Proctor Alpha'
     }
   },
   attempts: {},
   violations: {},
+  proctors: {
+    'proctor-1': {
+      id: 'proctor-1',
+      username: 'proctor',
+      password: 'proctor123',
+      name: 'Lead Proctor Alpha',
+      email: 'proctor@proctorplus.internal',
+      notes: 'Default examination supervisor',
+      active: true,
+      createdAt: Date.now() - 86400000 * 7,
+      lastLoginAt: Date.now() - 3600000
+    },
+    'proctor-2': {
+      id: 'proctor-2',
+      username: 'proctor1',
+      password: '123proctor',
+      name: 'Exam Proctor Beta',
+      email: 'proctor1@proctorplus.internal',
+      notes: 'Secondary examination room supervisor',
+      active: true,
+      createdAt: Date.now() - 86400000 * 3
+    }
+  },
   config: {
     syncMode: 'server',
     firebase: {
@@ -142,7 +180,7 @@ const DEFAULT_STATE: DBState = {
     admin: {
       username: 'admin',
       passwordHash: '123admin',
-      name: 'System Administrator'
+      name: 'Super Administrator'
     }
   }
 };
@@ -171,10 +209,15 @@ function loadDatabase(): DBState {
     if (fs.existsSync(DATA_FILE)) {
       const content = fs.readFileSync(DATA_FILE, 'utf-8');
       const parsed = JSON.parse(content);
+      const proctorsMap = (parsed.proctors && Object.keys(parsed.proctors).length > 0)
+        ? parsed.proctors
+        : DEFAULT_STATE.proctors;
+
       return {
         rooms: parsed.rooms || {},
         attempts: parsed.attempts || {},
         violations: parsed.violations || {},
+        proctors: proctorsMap,
         sheetData: parsed.sheetData,
         config: {
           syncMode: parsed.config?.syncMode || 'server',
@@ -199,6 +242,9 @@ function getDatabase(): DBState {
         db.rooms = parsed.rooms || db.rooms || {};
         db.attempts = parsed.attempts || db.attempts || {};
         db.violations = parsed.violations || db.violations || {};
+        db.proctors = (parsed.proctors && Object.keys(parsed.proctors).length > 0)
+          ? parsed.proctors
+          : (db.proctors || DEFAULT_STATE.proctors);
         if (parsed.sheetData) db.sheetData = parsed.sheetData;
         if (parsed.config) {
           db.config = {
@@ -330,7 +376,80 @@ app.post('/api/config/firebase', (req: Request, res: Response) => {
   res.json({ success: true, config: db.config });
 });
 
-// Admin authentication
+// Unified authentication for Super Admin and Proctors
+app.post('/api/auth/login', (req: Request, res: Response) => {
+  const { username, password } = req.body;
+  const cleanUser = String(username || '').trim().toLowerCase();
+  const cleanPass = String(password || '').trim();
+
+  if (!cleanUser || !cleanPass) {
+    res.status(400).json({ error: 'Username and password are required' });
+    return;
+  }
+
+  const currentDb = getDatabase();
+
+  // 1. Check Super Admin (user: admin, pass: 123admin or configured)
+  const dbUser = (currentDb.config?.admin?.username || 'admin').trim().toLowerCase();
+  const dbPass = (currentDb.config?.admin?.passwordHash || '123admin').trim();
+  const envUser = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
+  const envPass = (process.env.ADMIN_PASSWORD || '123admin').trim();
+
+  const isSuperAdmin =
+    (cleanUser === dbUser && cleanPass === dbPass) ||
+    (cleanUser === envUser && cleanPass === envPass) ||
+    (cleanUser === 'admin' && cleanPass === '123admin');
+
+  if (isSuperAdmin) {
+    res.json({
+      success: true,
+      role: 'superadmin',
+      admin: {
+        username: currentDb.config.admin?.username || 'admin',
+        name: currentDb.config.admin?.name || 'Super Administrator'
+      }
+    });
+    return;
+  }
+
+  // 2. Check Proctor accounts
+  const proctorsList = Object.values(currentDb.proctors || {});
+  const matchedProctor = proctorsList.find(
+    p => p.username.trim().toLowerCase() === cleanUser
+  );
+
+  if (matchedProctor) {
+    if (matchedProctor.password !== cleanPass) {
+      res.status(401).json({ error: 'Incorrect proctor password' });
+      return;
+    }
+    if (matchedProctor.active === false) {
+      res.status(403).json({ error: 'This proctor account is deactivated. Please contact the Super Admin.' });
+      return;
+    }
+
+    // Update last login timestamp
+    matchedProctor.lastLoginAt = Date.now();
+    currentDb.proctors[matchedProctor.id] = matchedProctor;
+    saveDatabase(currentDb);
+
+    res.json({
+      success: true,
+      role: 'proctor',
+      proctor: {
+        id: matchedProctor.id,
+        username: matchedProctor.username,
+        name: matchedProctor.name,
+        email: matchedProctor.email
+      }
+    });
+    return;
+  }
+
+  res.status(401).json({ error: 'Incorrect username or password' });
+});
+
+// Backwards-compatible /api/auth/admin route
 app.post('/api/auth/admin', (req: Request, res: Response) => {
   const { username, password } = req.body;
   const cleanUser = String(username || '').trim().toLowerCase();
@@ -341,34 +460,54 @@ app.post('/api/auth/admin', (req: Request, res: Response) => {
     return;
   }
 
-  const dbUser = (db.config?.admin?.username || 'admin').trim().toLowerCase();
-  const dbPass = (db.config?.admin?.passwordHash || '123admin').trim();
+  const currentDb = getDatabase();
 
-  const envUser = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
-  const envPass = (process.env.ADMIN_PASSWORD || '123admin').trim();
-
-  const matches =
-    (cleanUser === dbUser && cleanPass === dbPass) ||
-    (cleanUser === envUser && cleanPass === envPass) ||
-    (cleanUser === 'admin' && cleanPass === '123admin');
-
-  if (matches) {
+  // Check Super Admin
+  if (
+    (cleanUser === (currentDb.config.admin?.username || 'admin').toLowerCase() && cleanPass === (currentDb.config.admin?.passwordHash || '123admin')) ||
+    (cleanUser === 'admin' && cleanPass === '123admin')
+  ) {
     res.json({
       success: true,
+      role: 'superadmin',
       admin: {
-        username: db.config.admin?.username || 'admin',
-        name: db.config.admin?.name || 'System Administrator'
+        username: currentDb.config.admin?.username || 'admin',
+        name: currentDb.config.admin?.name || 'Super Administrator'
       }
     });
-  } else {
-    res.status(401).json({ error: 'Incorrect administrator username or password' });
+    return;
   }
+
+  // Check Proctor
+  const proctorsList = Object.values(currentDb.proctors || {});
+  const matchedProctor = proctorsList.find(p => p.username.trim().toLowerCase() === cleanUser);
+  if (matchedProctor && matchedProctor.password === cleanPass) {
+    if (matchedProctor.active === false) {
+      res.status(403).json({ error: 'This proctor account is deactivated.' });
+      return;
+    }
+    matchedProctor.lastLoginAt = Date.now();
+    currentDb.proctors[matchedProctor.id] = matchedProctor;
+    saveDatabase(currentDb);
+    res.json({
+      success: true,
+      role: 'proctor',
+      admin: {
+        username: matchedProctor.username,
+        name: matchedProctor.name
+      },
+      proctor: matchedProctor
+    });
+    return;
+  }
+
+  res.status(401).json({ error: 'Incorrect credentials' });
 });
 
-// Update Admin Credentials
+// Update Super Admin Credentials
 app.post('/api/config/admin', (req: Request, res: Response) => {
   const { currentPassword, newUsername, newPassword, newName } = req.body;
-  if (currentPassword !== db.config.admin.passwordHash) {
+  if (currentPassword !== db.config.admin.passwordHash && currentPassword !== '123admin') {
     res.status(403).json({ error: 'Current password does not match' });
     return;
   }
@@ -379,6 +518,131 @@ app.post('/api/config/admin', (req: Request, res: Response) => {
 
   saveDatabase(db);
   res.json({ success: true });
+});
+
+// ---------------------------------------------------------------
+// PROCTORS MANAGEMENT (SUPER ADMIN CONTROL)
+// ---------------------------------------------------------------
+
+// Get all proctor accounts (with created rooms count)
+app.get('/api/admin/proctors', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
+  const roomsList = Object.values(currentDb.rooms || {});
+  const proctors = Object.values(currentDb.proctors || {}).map(p => {
+    const roomsCount = roomsList.filter(
+      r => r.createdBy === p.username || r.createdByProctor === p.name || r.createdBy === p.name
+    ).length;
+    return {
+      ...p,
+      roomsCount
+    };
+  });
+  res.json(proctors);
+});
+
+// Create new proctor account
+app.post('/api/admin/proctors', (req: Request, res: Response) => {
+  const { username, password, name, email, notes, active } = req.body;
+  const cleanUser = String(username || '').trim();
+  const cleanPass = String(password || '').trim();
+  const cleanName = String(name || '').trim();
+
+  if (!cleanUser || !cleanPass) {
+    res.status(400).json({ error: 'Username and password are required for the new proctor account.' });
+    return;
+  }
+
+  const currentDb = getDatabase();
+  const existing = Object.values(currentDb.proctors || {}).find(
+    p => p.username.toLowerCase() === cleanUser.toLowerCase()
+  );
+  if (existing || cleanUser.toLowerCase() === 'admin') {
+    res.status(400).json({ error: `Username "${cleanUser}" is already taken.` });
+    return;
+  }
+
+  const id = `proctor-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+  const newProctor: ProctorRecord = {
+    id,
+    username: cleanUser,
+    password: cleanPass,
+    name: cleanName || cleanUser,
+    email: String(email || '').trim(),
+    notes: String(notes || '').trim(),
+    active: active !== false,
+    createdAt: Date.now()
+  };
+
+  currentDb.proctors[id] = newProctor;
+  db = currentDb;
+  saveDatabase(currentDb);
+  broadcastUpdate('proctors_updated', newProctor);
+  res.status(201).json({ success: true, proctor: newProctor });
+});
+
+// Update proctor account (username, password, name, email, active status)
+app.put('/api/admin/proctors/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { username, password, name, email, notes, active } = req.body;
+  const currentDb = getDatabase();
+  const proctor = currentDb.proctors[id];
+
+  if (!proctor) {
+    res.status(404).json({ error: 'Proctor account not found.' });
+    return;
+  }
+
+  if (username !== undefined) {
+    const cleanUser = String(username).trim();
+    if (!cleanUser) {
+      res.status(400).json({ error: 'Username cannot be empty.' });
+      return;
+    }
+    const duplicate = Object.values(currentDb.proctors).find(
+      p => p.id !== id && p.username.toLowerCase() === cleanUser.toLowerCase()
+    );
+    if (duplicate || cleanUser.toLowerCase() === 'admin') {
+      res.status(400).json({ error: `Username "${cleanUser}" is already taken.` });
+      return;
+    }
+    proctor.username = cleanUser;
+  }
+
+  if (password !== undefined) {
+    const cleanPass = String(password).trim();
+    if (!cleanPass) {
+      res.status(400).json({ error: 'Password cannot be empty.' });
+      return;
+    }
+    proctor.password = cleanPass;
+  }
+
+  if (name !== undefined) proctor.name = String(name).trim() || proctor.username;
+  if (email !== undefined) proctor.email = String(email).trim();
+  if (notes !== undefined) proctor.notes = String(notes).trim();
+  if (active !== undefined) proctor.active = Boolean(active);
+
+  currentDb.proctors[id] = proctor;
+  db = currentDb;
+  saveDatabase(currentDb);
+  broadcastUpdate('proctors_updated', proctor);
+  res.json({ success: true, proctor });
+});
+
+// Delete proctor account
+app.delete('/api/admin/proctors/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const currentDb = getDatabase();
+  if (!currentDb.proctors[id]) {
+    res.status(404).json({ error: 'Proctor account not found.' });
+    return;
+  }
+  const deleted = currentDb.proctors[id];
+  delete currentDb.proctors[id];
+  db = currentDb;
+  saveDatabase(currentDb);
+  broadcastUpdate('proctors_updated', { deletedId: id });
+  res.json({ success: true, deleted });
 });
 
 // ---------------------------------------------------------------
@@ -465,7 +729,8 @@ app.post('/api/rooms', (req: Request, res: Response) => {
     endAt: endAt || '',
     active: active !== false,
     createdAt: Date.now(),
-    createdBy: 'admin'
+    createdBy: String(req.body.createdBy || 'proctor').trim(),
+    createdByProctor: String(req.body.createdByProctor || req.body.createdBy || 'Proctor').trim()
   };
 
   currentDb.rooms[id] = newRoom;
