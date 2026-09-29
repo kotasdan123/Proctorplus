@@ -6,10 +6,7 @@ import {
   User,
   AlertCircle,
   Eye,
-  EyeOff,
-  Shield,
-  ArrowRight,
-  Sparkles
+  EyeOff
 } from 'lucide-react';
 import { loginAuth } from '../lib/api';
 import { LoadingScreen } from './LoadingScreen';
@@ -74,12 +71,6 @@ export const ProctorLoginModal: React.FC<ProctorLoginModalProps> = ({
     }
   };
 
-  const fillQuickCredentials = (u: string, p: string) => {
-    setUsername(u);
-    setPassword(p);
-    setError(null);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
       <div className="relative w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden">
@@ -126,7 +117,7 @@ export const ProctorLoginModal: React.FC<ProctorLoginModalProps> = ({
                 autoComplete="off"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username (e.g. proctor, admin)"
+                placeholder="Enter username"
                 className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-colors"
               />
             </div>
@@ -154,29 +145,6 @@ export const ProctorLoginModal: React.FC<ProctorLoginModalProps> = ({
                 title={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Credential Pre-fill Badges */}
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5 text-[11px]">
-            <span className="text-slate-500 font-bold block uppercase tracking-wider text-[10px]">
-              Quick Fill Credentials:
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => fillQuickCredentials('admin', '123admin')}
-                className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors font-mono"
-              >
-                Super Admin: <strong>admin</strong> / <strong>123admin</strong>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillQuickCredentials('proctor', 'proctor123')}
-                className="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-colors font-mono"
-              >
-                Proctor: <strong>proctor</strong> / <strong>proctor123</strong>
               </button>
             </div>
           </div>
