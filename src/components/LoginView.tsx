@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Shield, KeyRound, User, ArrowRight, Server, Flame, CheckCircle2, Lock, Users, Laptop } from 'lucide-react';
 import { verifyRoom } from '../lib/api';
 import { ExamRoom, ParticipantSession } from '../types';
+import { LoadingScreen } from './LoadingScreen';
 
 interface LoginViewProps {
   onRoomJoined: (session: ParticipantSession, room: ExamRoom) => void;
@@ -265,6 +266,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
       <footer className="px-6 py-4 border-t border-slate-800/80 text-center text-xs text-slate-500">
         Proctor+ Centralized Examination Portal • Multi-PC Synchronized • Anti-Cheat &amp; Timer Proctored
       </footer>
+
+      {/* Login Progress Loading Screen */}
+      {loading && (
+        <LoadingScreen
+          message="Authenticating Examination Room..."
+          subtext="Verifying Room ID, Passcode & Candidate Access"
+        />
+      )}
     </div>
   );
 };

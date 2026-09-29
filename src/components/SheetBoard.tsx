@@ -570,14 +570,20 @@ export const SheetBoard: React.FC = () => {
           {/* Table Container with Sticky Columns */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/90 overflow-hidden shadow-2xl">
             {loading ? (
-              <div className="py-20 text-center space-y-3">
-                <RefreshCw className="w-8 h-8 mx-auto animate-spin text-emerald-400" />
-                <p className="text-sm font-semibold text-slate-300">
-                  Loading data from Google Sheet...
-                </p>
-                <p className="text-xs text-slate-500">
-                  Retrieving 325 assessment columns and response records
-                </p>
+              <div className="py-20 flex flex-col items-center justify-center text-center space-y-4 select-none">
+                <div className="relative w-16 h-16 rounded-full border-2 border-emerald-500/60 p-0.5 bg-slate-900 shadow-[0_0_25px_rgba(16,185,129,0.3)]">
+                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-emerald-400 border-r-blue-400 animate-spin" />
+                  <img
+                    src="/logo.png"
+                    alt="Loading..."
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover rounded-full animate-spin-slow pointer-events-none"
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">Loading data from Google Sheet...</p>
+                  <p className="text-xs text-slate-400">Retrieving assessment response records and scoring matrix</p>
+                </div>
               </div>
             ) : filteredRows.length === 0 ? (
               <div className="py-16 text-center space-y-3">

@@ -20,12 +20,16 @@ import {
   createAttempt,
   subscribeToEvents
 } from './lib/api';
+import { securityShield } from './lib/antiDevtools';
 import { LoginView } from './components/LoginView';
 import { AdminPortal } from './components/AdminPortal';
 import { ParticipantRoomDashboard } from './components/ParticipantRoomDashboard';
 import { LiveExamView } from './components/LiveExamView';
 import { ResultView } from './components/ResultView';
 import { AdminLoginModal } from './components/AdminLoginModal';
+import { LoadingScreen } from './components/LoadingScreen';
+import { DevToolsBlockedModal } from './components/DevToolsBlockedModal';
+import { SecurityToast } from './components/SecurityToast';
 
 const SESSION_STORAGE_KEY = 'proctor_plus_session_v5';
 
@@ -56,6 +60,37 @@ export default function App() {
   } | null>(null);
 
   const [adminLoginOpen, setAdminLoginOpen] = useState(false);
+
+  // Loading States
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [transitionLoading, setTransitionLoading] = useState<{
+    active: boolean;
+    message: string;
+    subtext?: string;
+  } | null>(null);
+
+  // Security Shield & DevTools Blocking States
+  const [devToolsBlocked, setDevToolsBlocked] = useState(false);
+  const [securityNotice, setSecurityNotice] = useState<string | null>(null);
+
+  // Initialize Anti-Developer Tools & Security Shield
+  useEffect(() => {
+    securityShield.init((notice) => {
+      setSecurityNotice(notice);
+      setTimeout(() => {
+        setSecurityNotice(null);
+      }, 3500);
+    });
+
+    const unsubscribe = securityShield.subscribe((isOpen) => {
+      setDevToolsBlocked(isOpen);
+    });
+
+    return () => {
+      unsubscribe();
+      securityShield.destroy();
+    };
+  }, []);
 
   // Persist session to sessionStorage
   useEffect(() => {
@@ -90,6 +125,11 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to load application data:', err);
+    } finally {
+      // Smooth initial load experience
+      setTimeout(() => {
+        setIsInitialLoading(false);
+      }, 500);
     }
   }, [session]);
 
@@ -110,30 +150,61 @@ export default function App() {
     };
   }, [loadData]);
 
-  // Handlers
+  // Handlers with Loading Transitions
   const handleRoomJoined = (newSession: ParticipantSession, room: ExamRoom) => {
-    setSession(newSession);
-    setCurrentRoom(room);
+    setTransitionLoading({
+      active: true,
+      message: 'Entering Examination Room...',
+      subtext: `Connecting candidate session to Room ${room.roomNumber}`
+    });
+    setTimeout(() => {
+      setSession(newSession);
+      setCurrentRoom(room);
+      setTransitionLoading(null);
+    }, 450);
   };
 
   const handleAdminLoggedIn = (admin: { username: string; name: string }) => {
+    setTransitionLoading({
+      active: true,
+      message: 'Entering Administrator Portal...',
+      subtext: 'Authenticating high-privilege access & loading control center'
+    });
     const adminSession: AdminSession = {
       role: 'admin',
       adminUsername: admin.username,
       name: admin.name
     };
-    setSession(adminSession);
+    setTimeout(() => {
+      setSession(adminSession);
+      setAdminLoginOpen(false);
+      setTransitionLoading(null);
+    }, 450);
   };
 
   const handleLogout = () => {
-    setSession(null);
-    setCurrentRoom(null);
-    setActiveAttempt(null);
-    setCompletedResult(null);
+    setTransitionLoading({
+      active: true,
+      message: 'Logging Out...',
+      subtext: 'Safely clearing active session credentials'
+    });
+    setTimeout(() => {
+      setSession(null);
+      setCurrentRoom(null);
+      setActiveAttempt(null);
+      setCompletedResult(null);
+      setTransitionLoading(null);
+    }, 400);
   };
 
   const handleStartExam = async () => {
     if (!currentRoom || session?.role !== 'room') return;
+
+    setTransitionLoading({
+      active: true,
+      message: 'Launching Proctored Examination...',
+      subtext: 'Locking fullscreen browser state & starting countdown timer'
+    });
 
     try {
       const attempt = await createAttempt({
@@ -141,9 +212,13 @@ export default function App() {
         participantId: session.participantId,
         participantName: session.participantName
       });
-      setActiveAttempt(attempt);
+      setTimeout(() => {
+        setActiveAttempt(attempt);
+        setTransitionLoading(null);
+      }, 500);
     } catch (err) {
       console.error('Failed to start exam:', err);
+      setTransitionLoading(null);
       alert('Could not start examination session. Please try again.');
     }
   };
@@ -154,9 +229,29 @@ export default function App() {
     durationSeconds: number;
     terminationReason?: string;
   }) => {
-    setActiveAttempt(null);
-    setCompletedResult(result);
-    loadData();
+    setTransitionLoading({
+      active: true,
+      message: 'Finalizing Submission & Scoring...',
+      subtext: 'Syncing examination records with central Proctor+ server'
+    });
+    setTimeout(() => {
+      setActiveAttempt(null);
+      setCompletedResult(result);
+      loadData();
+      setTransitionLoading(null);
+    }, 450);
+  };
+
+  const handleReturnFromResult = () => {
+    setTransitionLoading({
+      active: true,
+      message: 'Returning to Room Dashboard...',
+      subtext: 'Reloading assessment summary'
+    });
+    setTimeout(() => {
+      setCompletedResult(null);
+      setTransitionLoading(null);
+    }, 350);
   };
 
   const handleCreateRoom = async (roomData: Partial<ExamRoom>) => {
@@ -174,76 +269,113 @@ export default function App() {
     await loadData();
   };
 
-  // 1. Live Exam View
-  if (activeAttempt && currentRoom) {
-    return (
-      <LiveExamView
-        room={currentRoom}
-        attempt={activeAttempt}
-        onFinish={handleExamFinish}
-      />
-    );
-  }
+  // Render primary view
+  const renderCurrentView = () => {
+    // 1. Live Exam View
+    if (activeAttempt && currentRoom) {
+      return (
+        <LiveExamView
+          room={currentRoom}
+          attempt={activeAttempt}
+          onFinish={handleExamFinish}
+        />
+      );
+    }
 
-  // 2. Exam Result Screen
-  if (completedResult && currentRoom) {
-    return (
-      <ResultView
-        room={currentRoom}
-        result={completedResult}
-        onReturn={() => setCompletedResult(null)}
-      />
-    );
-  }
+    // 2. Exam Result Screen
+    if (completedResult && currentRoom) {
+      return (
+        <ResultView
+          room={currentRoom}
+          result={completedResult}
+          onReturn={handleReturnFromResult}
+        />
+      );
+    }
 
-  // 3. Admin Control Center
-  if (session?.role === 'admin') {
-    return (
-      <AdminPortal
-        adminSession={session}
-        rooms={rooms}
-        attempts={attempts}
-        violations={violations}
-        systemConfig={systemConfig}
-        connectedPCs={connectedPCs}
-        onLogout={handleLogout}
-        onCreateRoom={handleCreateRoom}
-        onUpdateRoom={handleUpdateRoom}
-        onDeleteRoom={handleDeleteRoom}
-        onConfigUpdated={(config) => setSystemConfig(config)}
-      />
-    );
-  }
+    // 3. Admin Control Center
+    if (session?.role === 'admin') {
+      return (
+        <AdminPortal
+          adminSession={session}
+          rooms={rooms}
+          attempts={attempts}
+          violations={violations}
+          systemConfig={systemConfig}
+          connectedPCs={connectedPCs}
+          onLogout={handleLogout}
+          onCreateRoom={handleCreateRoom}
+          onUpdateRoom={handleUpdateRoom}
+          onDeleteRoom={handleDeleteRoom}
+          onConfigUpdated={(config) => setSystemConfig(config)}
+        />
+      );
+    }
 
-  // 4. Participant Room Dashboard
-  if (session?.role === 'room' && currentRoom) {
-    return (
-      <ParticipantRoomDashboard
-        room={currentRoom}
-        session={session}
-        attempts={attempts}
-        onStartExam={handleStartExam}
-        onLogout={handleLogout}
-      />
-    );
-  }
+    // 4. Participant Room Dashboard
+    if (session?.role === 'room' && currentRoom) {
+      return (
+        <ParticipantRoomDashboard
+          room={currentRoom}
+          session={session}
+          attempts={attempts}
+          onStartExam={handleStartExam}
+          onLogout={handleLogout}
+        />
+      );
+    }
 
-  // 5. Default: Room Login & Brand Welcome
+    // 5. Default: Room Login & Brand Welcome
+    return (
+      <>
+        <LoginView
+          onRoomJoined={handleRoomJoined}
+          onOpenAdminLogin={() => setAdminLoginOpen(true)}
+          connectedPCs={connectedPCs}
+          syncMode={systemConfig?.syncMode || 'server'}
+        />
+
+        {adminLoginOpen && (
+          <AdminLoginModal
+            onClose={() => setAdminLoginOpen(false)}
+            onSuccess={handleAdminLoggedIn}
+          />
+        )}
+      </>
+    );
+  };
+
   return (
-    <>
-      <LoginView
-        onRoomJoined={handleRoomJoined}
-        onOpenAdminLogin={() => setAdminLoginOpen(true)}
-        connectedPCs={connectedPCs}
-        syncMode={systemConfig?.syncMode || 'server'}
-      />
+    <div className="min-h-screen bg-slate-950 text-slate-100 select-none">
+      {/* Active Application View */}
+      {renderCurrentView()}
 
-      {adminLoginOpen && (
-        <AdminLoginModal
-          onClose={() => setAdminLoginOpen(false)}
-          onSuccess={handleAdminLoggedIn}
+      {/* Developer Tools Tamper Shield Modal */}
+      {devToolsBlocked && (
+        <DevToolsBlockedModal
+          onDismissCheck={() => {
+            const stillOpen = securityShield.isDevToolsOpen();
+            setDevToolsBlocked(stillOpen);
+          }}
         />
       )}
-    </>
+
+      {/* HUD Security Interception Toast */}
+      <SecurityToast
+        message={securityNotice}
+        onClose={() => setSecurityNotice(null)}
+      />
+
+      {/* Global / Transition Circular Spinning Logo Loading Screen */}
+      {(isInitialLoading || transitionLoading?.active) && (
+        <LoadingScreen
+          message={transitionLoading?.message || 'Initializing PROCTOR+ Portal...'}
+          subtext={
+            transitionLoading?.subtext ||
+            'Centralized Online Examination & Anti-Cheat Proctoring Portal'
+          }
+        />
+      )}
+    </div>
   );
 }

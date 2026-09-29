@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, ShieldCheck, Lock, User, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { adminLogin } from '../lib/api';
+import { LoadingScreen } from './LoadingScreen';
 
 interface AdminLoginModalProps {
   onClose: () => void;
@@ -137,6 +138,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ onClose, onSuc
           </div>
         </form>
       </div>
+
+      {loading && (
+        <LoadingScreen
+          message="Verifying Administrator Token..."
+          subtext="Authenticating Master Control Center Session"
+        />
+      )}
     </div>
   );
 };

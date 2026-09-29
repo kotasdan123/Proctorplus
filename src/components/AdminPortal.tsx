@@ -37,6 +37,7 @@ import {
 import { RoomModal } from './RoomModal';
 import { FirebaseConfigModal } from './FirebaseConfigModal';
 import { SheetBoard } from './SheetBoard';
+import { LoadingScreen } from './LoadingScreen';
 import { updateAdminCredentials } from '../lib/api';
 
 interface AdminPortalProps {
@@ -69,6 +70,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [currentPage, setCurrentPage] = useState<
     'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings' | 'sheet'
   >('dashboard');
+  const [tabLoading, setTabLoading] = useState<{ active: boolean; label: string } | null>(null);
+
+  const handleNavigateTab = (target: 'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings' | 'sheet', customLabel?: string) => {
+    if (target === currentPage) return;
+    const labels: Record<string, string> = {
+      dashboard: 'Switching to Overview Dashboard...',
+      rooms: 'Loading Examination Rooms...',
+      submissions: 'Loading Examinee Submissions...',
+      sheet: 'Opening Live Data Sheet Board...',
+      violations: 'Loading Security Violations Log...',
+      analytics: 'Computing Examination Analytics...',
+      settings: 'Loading Portal Security & Cloud Config...'
+    };
+    setTabLoading({ active: true, label: customLabel || labels[target] || 'Loading Tab...' });
+    setTimeout(() => {
+      setCurrentPage(target);
+      setTabLoading(null);
+    }, 380);
+  };
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<ExamRoom | null>(null);
@@ -175,7 +195,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           <nav className="space-y-1.5">
             <button
               type="button"
-              onClick={() => setCurrentPage('dashboard')}
+              onClick={() => handleNavigateTab('dashboard')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'dashboard'
                   ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
@@ -188,7 +208,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             <button
               type="button"
-              onClick={() => setCurrentPage('rooms')}
+              onClick={() => handleNavigateTab('rooms')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'rooms'
                   ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
@@ -204,7 +224,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             <button
               type="button"
-              onClick={() => setCurrentPage('submissions')}
+              onClick={() => handleNavigateTab('submissions')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'submissions'
                   ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
@@ -220,7 +240,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             <button
               type="button"
-              onClick={() => setCurrentPage('sheet')}
+              onClick={() => handleNavigateTab('sheet')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'sheet'
                   ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
@@ -236,7 +256,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             <button
               type="button"
-              onClick={() => setCurrentPage('violations')}
+              onClick={() => handleNavigateTab('violations')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'violations'
                   ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
@@ -254,7 +274,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             <button
               type="button"
-              onClick={() => setCurrentPage('analytics')}
+              onClick={() => handleNavigateTab('analytics')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'analytics'
                   ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
@@ -267,7 +287,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             <button
               type="button"
-              onClick={() => setCurrentPage('settings')}
+              onClick={() => handleNavigateTab('settings')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'settings'
                   ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
@@ -311,7 +331,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <div className="md:hidden">
               <select
                 value={currentPage}
-                onChange={(e) => setCurrentPage(e.target.value as any)}
+                onChange={(e) => handleNavigateTab(e.target.value as any)}
                 className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-bold text-white"
               >
                 <option value="dashboard">Dashboard</option>
@@ -501,7 +521,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setCurrentPage('submissions')}
+                    onClick={() => handleNavigateTab('submissions')}
                     className="text-xs font-semibold text-emerald-400 hover:text-emerald-300"
                   >
                     View All Submissions &gt;
@@ -1284,6 +1304,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Tab Transition Loading Screen */}
+      {tabLoading?.active && (
+        <LoadingScreen
+          message={tabLoading.label}
+          subtext="PROCTOR+ Control Center"
+        />
       )}
     </div>
   );
