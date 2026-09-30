@@ -41,7 +41,9 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
   const [formKey, setFormKey] = useState<number>(Date.now());
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const graceUntilRef = useRef<number>(Date.now() + 2500);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const isOverIframeRef = useRef<boolean>(false);
+  const graceUntilRef = useRef<number>(Date.now() + 3500);
   const lastViolationTimeRef = useRef<number>(0);
   const isFinishedRef = useRef<boolean>(false);
   const startTimeRef = useRef<number>(Date.now());
@@ -212,9 +214,52 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
     };
 
     const onBlur = () => {
-      if (!isFinishedRef.current && Date.now() > graceUntilRef.current) {
-        handleViolation('Examination window lost focus.');
-      }
+      if (isFinishedRef.current || Date.now() < graceUntilRef.current) return;
+
+      // When an examinee clicks inside the embedded Google Docs / Google Form iframe,
+      // the browser naturally fires window.blur because focus transitions into the iframe context.
+      // This is legitimate exam participation and must NOT be flagged as a security violation.
+      setTimeout(() => {
+        if (isFinishedRef.current) return;
+
+        const activeEl = document.activeElement;
+        const isExamIframe =
+          activeEl &&
+          (activeEl.tagName === 'IFRAME' || activeEl === iframeRef.current);
+
+        // If focus shifted to the embedded Google Form / Doc, or cursor is over the iframe canvas,
+        // it is normal student answering activity — safely ignore!
+        if (isExamIframe || isOverIframeRef.current) {
+          return;
+        }
+
+        // If document is actually hidden (tab switched or minimized), handle it via visibility
+        if (document.hidden) {
+          handleViolation('Switched tabs or minimized the examination window.');
+          return;
+        }
+
+        // Only flag if document genuinely lost focus to an external desktop application outside the browser
+        if (!document.hasFocus() && !isOverIframeRef.current && Date.now() > graceUntilRef.current) {
+          handleViolation('Examination window lost focus.');
+        }
+      }, 250);
+    };
+
+    // Track mouse position over the iframe to prevent false positives when clicking inside Google Docs
+    const onMouseMove = (e: MouseEvent) => {
+      if (!iframeRef.current) return;
+      const rect = iframeRef.current.getBoundingClientRect();
+      const isInside =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+      isOverIframeRef.current = isInside;
+    };
+
+    const onMouseLeaveDoc = () => {
+      isOverIframeRef.current = false;
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -255,6 +300,8 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('blur', onBlur);
+    window.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseleave', onMouseLeaveDoc);
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('contextmenu', onContextMenu);
     document.addEventListener('copy', onCopyCutPaste);
@@ -266,6 +313,8 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
       document.removeEventListener('fullscreenchange', onFullscreenChange);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('blur', onBlur);
+      window.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseleave', onMouseLeaveDoc);
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('contextmenu', onContextMenu);
       document.removeEventListener('copy', onCopyCutPaste);
@@ -277,8 +326,8 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
 
   // Resume from violation overlay
   const handleResume = async () => {
-    setViolationOverlay({ show: false, reason: '', flagged: false });
-    graceUntilRef.current = Date.now() + 2500;
+    setViolationOverlay({ show: false, reason: '', flagged: false, ejected: false });
+    graceUntilRef.current = Date.now() + 3000;
     await enterFullscreen();
   };
 
@@ -396,8 +445,17 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
       </div>
 
       {/* Embedded Google Form Canvas */}
-      <main className="flex-1 w-full relative bg-slate-900 p-2 sm:p-3 overflow-hidden flex flex-col">
+      <main
+        className="flex-1 w-full relative bg-slate-900 p-2 sm:p-3 overflow-hidden flex flex-col"
+        onMouseEnter={() => {
+          isOverIframeRef.current = true;
+        }}
+        onMouseMove={() => {
+          isOverIframeRef.current = true;
+        }}
+      >
         <iframe
+          ref={iframeRef}
           key={formKey}
           src={room.formUrl}
           title="Google Form Examination"
@@ -405,6 +463,9 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
           referrerPolicy="no-referrer"
           loading="eager"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          onMouseEnter={() => {
+            isOverIframeRef.current = true;
+          }}
         />
       </main>
 
