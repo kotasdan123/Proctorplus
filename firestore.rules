@@ -60,5 +60,10 @@ service cloud.firestore {
         && request.resource.data.reason is string;
       allow update, delete: if isValidId(violationId);
     }
+
+    // Configuration & Settings: Used for Sheet link and system settings
+    match /config/{configId} {
+      allow read, write: if isValidId(configId);
+    }
   }
 }

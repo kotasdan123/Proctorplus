@@ -407,6 +407,9 @@ export default function App() {
           onConfigUpdated={(config) => setSystemConfig(config)}
           roomsError={roomsError}
           onRetryLoadRooms={loadData}
+          onResetAllToDefault={async () => {
+            await loadData();
+          }}
         />
       );
     }

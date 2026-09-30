@@ -1166,3 +1166,139 @@ export async function deleteSheetRow(index: number): Promise<void> {
   current.rows.splice(index, 1);
   saveLocalSheet(current);
 }
+
+export async function saveSheetUrl(url: string): Promise<SheetData> {
+  const cleanedUrl = url.trim();
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/sheet/url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify({ url: cleanedUrl })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      saveLocalSheet(data.sheetData);
+      try {
+        await setDoc(doc(db, 'config', 'sheet'), {
+          url: cleanedUrl,
+          updatedAt: Date.now()
+        });
+      } catch {
+        // Ignore
+      }
+      return data.sheetData;
+    }
+  } catch {
+    // Fallback
+  }
+  const current = getLocalSheet();
+  current.url = cleanedUrl;
+  current.lastSyncedAt = Date.now();
+  saveLocalSheet(current);
+  try {
+    await setDoc(doc(db, 'config', 'sheet'), {
+      url: cleanedUrl,
+      updatedAt: Date.now()
+    });
+  } catch {
+    // Ignore
+  }
+  return current;
+}
+
+// ---------------------------------------------------------------
+// FACTORY RESET: RESET ALL PROCTOR ACCOUNTS & WIPE DATA
+// ---------------------------------------------------------------
+
+export async function resetAllToDefault(): Promise<{ success: boolean; message: string }> {
+  // 1. Purge all examination rooms in Firestore
+  try {
+    const roomsCol = collection(db, 'rooms');
+    const roomsSnap = await getDocs(roomsCol);
+    for (const d of roomsSnap.docs) {
+      await deleteDoc(d.ref);
+    }
+  } catch (err) {
+    console.error('Error wiping Firestore rooms:', err);
+  }
+
+  // 2. Purge all examinee submissions & attempts in Firestore
+  try {
+    const attemptsCol = collection(db, 'attempts');
+    const attemptsSnap = await getDocs(attemptsCol);
+    for (const d of attemptsSnap.docs) {
+      await deleteDoc(d.ref);
+    }
+  } catch (err) {
+    console.error('Error wiping Firestore attempts:', err);
+  }
+
+  // 3. Purge all security violations in Firestore
+  try {
+    const violationsCol = collection(db, 'violations');
+    const violationsSnap = await getDocs(violationsCol);
+    for (const d of violationsSnap.docs) {
+      await deleteDoc(d.ref);
+    }
+  } catch (err) {
+    console.error('Error wiping Firestore violations:', err);
+  }
+
+  // 4. Reset proctor accounts in Firestore to factory default
+  try {
+    const proctorsCol = collection(db, 'proctors');
+    const proctorsSnap = await getDocs(proctorsCol);
+    for (const d of proctorsSnap.docs) {
+      await deleteDoc(d.ref);
+    }
+    for (const p of DEFAULT_PROCTORS) {
+      await setDoc(doc(db, 'proctors', p.id), p);
+    }
+  } catch (err) {
+    console.error('Error resetting Firestore proctors:', err);
+  }
+
+  // 5. Reset admin credentials in Firestore
+  try {
+    await setDoc(doc(db, 'admins', 'admin-primary'), DEFAULT_ADMIN);
+  } catch (err) {
+    console.error('Error resetting Firestore admin:', err);
+  }
+
+  // 6. Reset sheet configuration in Firestore
+  try {
+    await setDoc(doc(db, 'config', 'sheet'), {
+      url: '',
+      updatedAt: Date.now()
+    });
+  } catch (err) {
+    console.error('Error resetting Firestore sheet config:', err);
+  }
+
+  // 7. Request Server to reset local memory & file database
+  try {
+    await fetch(`${getBaseUrl()}/api/admin/reset-default`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }
+    });
+  } catch (err) {
+    console.error('Error calling server reset endpoint:', err);
+  }
+
+  // 8. Wipe LocalStorage caches
+  try {
+    localStorage.removeItem(PROCTOR_ROOMS_KEY);
+    localStorage.removeItem(PROCTOR_ATTEMPTS_KEY);
+    localStorage.removeItem(PROCTOR_VIOLATIONS_KEY);
+    localStorage.removeItem(PROCTOR_SHEET_KEY);
+    saveLocalProctors(DEFAULT_PROCTORS);
+    saveLocalAdminCreds(DEFAULT_ADMIN);
+  } catch (err) {
+    console.error('Error clearing local storage:', err);
+  }
+
+  return {
+    success: true,
+    message: 'All examination rooms, examinee submissions, attempts, and violation logs have been deleted, and proctor accounts have been restored to default.'
+  };
+}

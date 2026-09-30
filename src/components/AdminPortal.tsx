@@ -32,13 +32,14 @@ import {
   Eye,
   Lock,
   KeyRound,
-  Table
+  Table,
+  AlertTriangle
 } from 'lucide-react';
 import { RoomModal } from './RoomModal';
 import { FirebaseConfigModal } from './FirebaseConfigModal';
 import { SheetBoard } from './SheetBoard';
 import { LoadingScreen } from './LoadingScreen';
-import { updateAdminCredentials } from '../lib/api';
+import { updateAdminCredentials, resetAllToDefault } from '../lib/api';
 
 interface AdminPortalProps {
   adminSession: AdminSession;
@@ -54,6 +55,7 @@ interface AdminPortalProps {
   onConfigUpdated: (config: SystemConfig) => void;
   roomsError?: string | null;
   onRetryLoadRooms?: () => void;
+  onResetAllToDefault?: () => Promise<void>;
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
@@ -69,29 +71,64 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onDeleteRoom,
   onConfigUpdated,
   roomsError,
-  onRetryLoadRooms
+  onRetryLoadRooms,
+  onResetAllToDefault
 }) => {
   const [currentPage, setCurrentPage] = useState<
-    'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings' | 'sheet'
+    'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings'
   >('dashboard');
+  const [analyticsSubTab, setAnalyticsSubTab] = useState<'metrics' | 'sheet'>('metrics');
   const [tabLoading, setTabLoading] = useState<{ active: boolean; label: string } | null>(null);
 
-  const handleNavigateTab = (target: 'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings' | 'sheet', customLabel?: string) => {
-    if (target === currentPage) return;
+  // Danger Zone Factory Reset state
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetConfirmInput, setResetConfirmInput] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
+
+  const handleNavigateTab = (
+    target: 'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings' | 'sheet',
+    customLabel?: string
+  ) => {
+    let resolvedTarget: 'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings' = target === 'sheet' ? 'analytics' : target;
+    if (target === 'sheet') {
+      setAnalyticsSubTab('sheet');
+    }
+    if (resolvedTarget === currentPage && target !== 'sheet') return;
     const labels: Record<string, string> = {
       dashboard: 'Switching to Overview Dashboard...',
       rooms: 'Loading Examination Rooms...',
       submissions: 'Loading Examinee Submissions...',
-      sheet: 'Opening Live Data Sheet Board...',
+      sheet: 'Opening Live Google Sheet Board in Analytics...',
       violations: 'Loading Security Violations Log...',
       analytics: 'Computing Examination Analytics...',
       settings: 'Loading Portal Security & Cloud Config...'
     };
     setTabLoading({ active: true, label: customLabel || labels[target] || 'Loading Tab...' });
     setTimeout(() => {
-      setCurrentPage(target);
+      setCurrentPage(resolvedTarget);
       setTabLoading(null);
     }, 380);
+  };
+
+  const handleExecuteReset = async () => {
+    if (resetConfirmInput.trim().toUpperCase() !== 'RESET') return;
+    setResetLoading(true);
+    try {
+      await resetAllToDefault();
+      if (onResetAllToDefault) {
+        await onResetAllToDefault();
+      }
+      setResetModalOpen(false);
+      setResetConfirmInput('');
+      setResetSuccessMsg('All examination rooms, submissions, and violations have been deleted, and proctor accounts have been restored to factory default.');
+      setCurrentPage('dashboard');
+      setTimeout(() => setResetSuccessMsg(null), 7000);
+    } catch (err: any) {
+      alert(`Reset operation failed: ${err.message || 'Unknown error'}`);
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -244,22 +281,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
             <button
               type="button"
-              onClick={() => handleNavigateTab('sheet')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                currentPage === 'sheet'
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Table className="w-4 h-4 text-emerald-400" />
-              <span>Sheet</span>
-              <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-950/60 text-emerald-400 font-bold border border-emerald-800/60">
-                Data Board
-              </span>
-            </button>
-
-            <button
-              type="button"
               onClick={() => handleNavigateTab('violations')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 currentPage === 'violations'
@@ -341,7 +362,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <option value="dashboard">Dashboard</option>
                 <option value="rooms">Rooms &amp; Exams ({rooms.length})</option>
                 <option value="submissions">Submissions ({attempts.length})</option>
-                <option value="sheet">Sheet (Data Board)</option>
                 <option value="violations">Security Events ({violations.length})</option>
                 <option value="analytics">Analytics</option>
                 <option value="settings">Settings &amp; Firebase</option>
@@ -350,8 +370,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <h2 className="text-base font-bold text-white capitalize hidden sm:block">
               {currentPage === 'settings'
                 ? 'System Settings & Firebase'
-                : currentPage === 'sheet'
-                ? 'Google Sheet — Editable Data Board'
+                : currentPage === 'analytics'
+                ? 'Examination Analytics & Google Sheet'
                 : currentPage}
             </h2>
           </div>
@@ -1035,72 +1055,122 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           )}
 
           {/* =========================================================
-              5. ANALYTICS
+              5. ANALYTICS (WITH EMBEDDED GOOGLE SHEET DATA BOARD)
              ========================================================= */}
           {currentPage === 'analytics' && (
             <div className="space-y-6">
-              <div>
-                <h1 className="text-2xl font-bold text-white">Examination Analytics</h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  High-level breakdown of examinee completion outcomes and room utilization.
-                </p>
+              {/* Header and Sub-Tab Switcher */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-bold text-white">Examination Analytics</h1>
+                  <p className="text-xs text-slate-400 mt-1">
+                    High-level breakdown of examinee completion outcomes, room distribution, and live response sheets.
+                  </p>
+                </div>
+
+                {/* Sub-tab Navigation */}
+                <div className="flex items-center gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-2xl w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setAnalyticsSubTab('metrics')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      analyticsSubTab === 'metrics'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <BarChart3 className="w-3.5 h-3.5" />
+                    <span>Metrics &amp; Overview</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAnalyticsSubTab('sheet')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      analyticsSubTab === 'sheet'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Google Sheet Data Board</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                    Completed Sessions
-                  </span>
-                  <strong className="text-3xl font-black text-emerald-400">{completedSessions}</strong>
-                  <span className="text-xs text-slate-400 block mt-1">
-                    {completionRate}% completion rate
-                  </span>
-                </div>
+              {/* Sub-tab 1: Examination Metrics */}
+              {analyticsSubTab === 'metrics' && (
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                        Completed Sessions
+                      </span>
+                      <strong className="text-3xl font-black text-emerald-400">{completedSessions}</strong>
+                      <span className="text-xs text-slate-400 block mt-1">
+                        {completionRate}% completion rate
+                      </span>
+                    </div>
 
-                <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                    Time Expired Sessions
-                  </span>
-                  <strong className="text-3xl font-black text-amber-400">{expiredSessions}</strong>
-                  <span className="text-xs text-slate-400 block mt-1">Auto-submitted on timer end</span>
-                </div>
+                    <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                        Time Expired Sessions
+                      </span>
+                      <strong className="text-3xl font-black text-amber-400">{expiredSessions}</strong>
+                      <span className="text-xs text-slate-400 block mt-1">Auto-submitted on timer end</span>
+                    </div>
 
-                <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                    Live In Progress
-                  </span>
-                  <strong className="text-3xl font-black text-emerald-400">{liveSessions}</strong>
-                  <span className="text-xs text-slate-400 block mt-1">Currently taking exam</span>
-                </div>
-              </div>
+                    <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                        Live In Progress
+                      </span>
+                      <strong className="text-3xl font-black text-emerald-400">{liveSessions}</strong>
+                      <span className="text-xs text-slate-400 block mt-1">Currently taking exam</span>
+                    </div>
+                  </div>
 
-              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
-                <h3 className="text-base font-bold text-white">Sessions Distribution by Examination Room</h3>
-                <div className="space-y-3">
-                  {rooms.map((room) => {
-                    const roomAttempts = attempts.filter((a) => a.examId === room.id);
-                    const percent = attempts.length > 0 ? Math.round((roomAttempts.length / attempts.length) * 100) : 0;
-                    return (
-                      <div key={room.id} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-medium text-slate-300 truncate">
-                            {room.roomNumber} — {room.title}
-                          </span>
-                          <span className="text-slate-400 font-mono font-semibold">
-                            {roomAttempts.length} ({percent}%)
-                          </span>
-                        </div>
-                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-emerald-500 to-blue-500"
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
+                  <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+                    <h3 className="text-base font-bold text-white">Sessions Distribution by Examination Room</h3>
+                    {rooms.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-500">
+                        No examination rooms created yet.
                       </div>
-                    );
-                  })}
+                    ) : (
+                      <div className="space-y-3">
+                        {rooms.map((room) => {
+                          const roomAttempts = attempts.filter((a) => a.examId === room.id);
+                          const percent = attempts.length > 0 ? Math.round((roomAttempts.length / attempts.length) * 100) : 0;
+                          return (
+                            <div key={room.id} className="space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-medium text-slate-300 truncate">
+                                  {room.roomNumber} — {room.title}
+                                </span>
+                                <span className="text-slate-400 font-mono font-semibold">
+                                  {roomAttempts.length} ({percent}%)
+                                </span>
+                              </div>
+                              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-emerald-500 to-blue-500"
+                                  style={{ width: `${percent}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Sub-tab 2: Google Sheet Data Board */}
+              {analyticsSubTab === 'sheet' && (
+                <div className="animate-in fade-in duration-200">
+                  <SheetBoard />
+                </div>
+              )}
             </div>
           )}
 
@@ -1236,11 +1306,60 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </div>
                 </form>
               </div>
+
+              {/* Reset Success Feedback Banner */}
+              {resetSuccessMsg && (
+                <div className="p-4 rounded-2xl bg-emerald-950/80 border border-emerald-600 text-emerald-200 text-xs flex items-start gap-3 shadow-lg animate-in fade-in">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-white text-sm">System Factory Reset Completed</div>
+                    <p className="mt-0.5">{resetSuccessMsg}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Danger Zone */}
+              <div className="p-6 rounded-3xl bg-red-950/20 border border-red-900/50 space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-red-300">Danger Zone</h3>
+                    <p className="text-xs text-red-400/80 mt-0.5">
+                      Destructive operations that permanently reset and erase portal examination data.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-slate-950/60 border border-red-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Reset All Proctor Accounts &amp; Data to Default</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400 border border-red-800">
+                        Factory Reset
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
+                      Permanently wipes all created examination rooms, examinee attempts and submissions, security violation logs, Google Sheet data, and restores all proctor accounts and passwords to default.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetConfirmInput('');
+                      setResetModalOpen(true);
+                    }}
+                    className="px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-600/30 flex items-center gap-2 flex-shrink-0 transition-all hover:scale-[1.02]"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Reset All to Default</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
-
-          {/* Google Sheet Data Board Page */}
-          {currentPage === 'sheet' && <SheetBoard />}
         </main>
       </div>
 
@@ -1346,6 +1465,94 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Danger Zone Factory Reset Confirmation Modal */}
+      {resetModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-slate-900 border border-red-700/80 rounded-3xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider block">
+                    DANGER ZONE • IRREVERSIBLE
+                  </span>
+                  <h3 className="text-lg font-bold text-white mt-0.5">Reset All Proctor Accounts &amp; Data</h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!resetLoading) setResetModalOpen(false);
+                }}
+                disabled={resetLoading}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-red-950/40 border border-red-800/60 text-xs text-red-200 space-y-2">
+              <div className="font-bold text-red-300 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                <span>Warning: This will permanently delete:</span>
+              </div>
+              <ul className="list-disc list-inside space-y-1 text-slate-300 ml-1">
+                <li>All examination rooms in Firestore and local database</li>
+                <li>All examinee attempts, submissions, and session records</li>
+                <li>All anti-cheat security violation event logs</li>
+                <li>Google Sheet link and cached response data</li>
+                <li>All proctor accounts and passwords (restored to default factory state)</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs text-slate-300 font-semibold">
+                To confirm this destructive action, type <span className="font-mono text-red-400 font-bold">RESET</span> below:
+              </label>
+              <input
+                type="text"
+                value={resetConfirmInput}
+                onChange={(e) => setResetConfirmInput(e.target.value)}
+                placeholder="RESET"
+                disabled={resetLoading}
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-red-500 rounded-xl text-white font-mono text-sm placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-red-500/40"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setResetModalOpen(false)}
+                disabled={resetLoading}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteReset}
+                disabled={resetConfirmInput.trim().toUpperCase() !== 'RESET' || resetLoading}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:hover:bg-red-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-600/30 flex items-center gap-2 transition-all"
+              >
+                {resetLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Resetting System...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Permanently Reset All</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

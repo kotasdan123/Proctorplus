@@ -17,19 +17,21 @@ import {
   SlidersHorizontal,
   Table,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Edit2,
+  Link2,
+  Unlink,
+  Info
 } from 'lucide-react';
 import { SheetData } from '../types';
 import {
   fetchSheetData,
   syncSheetData,
   saveSheetData,
+  saveSheetUrl,
   addSheetRow,
   deleteSheetRow
 } from '../lib/api';
-
-const DEFAULT_SHEET_URL =
-  'https://docs.google.com/spreadsheets/d/1Fa_x25xdW0hQP_zWNavmRLaHmpyTHpgUObczmcx-ETE/edit?usp=sharing';
 
 export const SheetBoard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
@@ -40,11 +42,16 @@ export const SheetBoard: React.FC = () => {
 
   // Core sheet data
   const [sheetData, setSheetData] = useState<SheetData>({
-    url: DEFAULT_SHEET_URL,
+    url: '',
     lastSyncedAt: null,
     headers: [],
     rows: []
   });
+
+  // URL management state
+  const [editingUrl, setEditingUrl] = useState<boolean>(false);
+  const [sheetUrlInput, setSheetUrlInput] = useState<string>('');
+  const [urlSaving, setUrlSaving] = useState<boolean>(false);
 
   // Track modified rows locally before saving
   const [localRows, setLocalRows] = useState<string[][]>([]);
@@ -88,6 +95,7 @@ export const SheetBoard: React.FC = () => {
     try {
       const data = await fetchSheetData(force);
       setSheetData(data);
+      setSheetUrlInput(data.url || '');
       setLocalRows(data.rows || []);
       setEditedCells(new Set());
     } catch (err: any) {
@@ -97,7 +105,35 @@ export const SheetBoard: React.FC = () => {
     }
   };
 
-  const handleSync = async () => {
+  const handleSaveUrl = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setUrlSaving(true);
+    setError(null);
+    const cleaned = sheetUrlInput.trim();
+    try {
+      const updated = await saveSheetUrl(cleaned);
+      setSheetData(updated);
+      setEditingUrl(false);
+      showToast(cleaned ? 'Google Sheet link saved successfully!' : 'Google Sheet link removed.');
+      if (cleaned && (!updated.rows || updated.rows.length === 0)) {
+        // Automatically sync initial records if sheet is freshly connected
+        handleSync(cleaned);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to save Google Sheet link.');
+    } finally {
+      setUrlSaving(false);
+    }
+  };
+
+  const handleSync = async (customUrl?: string) => {
+    const targetUrl = (customUrl || sheetData.url || '').trim();
+    if (!targetUrl) {
+      setError('No Google Sheet link configured. Please paste your Google Sheet link above and save it.');
+      setEditingUrl(true);
+      return;
+    }
+
     if (editedCells.size > 0) {
       const confirmed = window.confirm(
         'You have unsaved local edits on this board. Syncing from Google Sheet will overwrite local edits. Continue?'
@@ -108,7 +144,7 @@ export const SheetBoard: React.FC = () => {
     setSyncing(true);
     setError(null);
     try {
-      const data = await syncSheetData(sheetData.url || DEFAULT_SHEET_URL);
+      const data = await syncSheetData(targetUrl);
       setSheetData(data);
       setLocalRows(data.rows || []);
       setEditedCells(new Set());
@@ -282,6 +318,12 @@ export const SheetBoard: React.FC = () => {
     return new Set(emails).size;
   }, [localRows]);
 
+  const sheetId = useMemo(() => {
+    if (!sheetData.url) return null;
+    const match = sheetData.url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    return match ? match[1] : null;
+  }, [sheetData.url]);
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Title */}
@@ -299,7 +341,7 @@ export const SheetBoard: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Inspect, edit, search, and synchronize submissions from the linked Google Sheet.
+                Inspect, edit, search, and synchronize submissions from your linked Google Sheet.
               </p>
             </div>
           </div>
@@ -307,22 +349,33 @@ export const SheetBoard: React.FC = () => {
 
         {/* Global Action Buttons */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          <a
-            href={sheetData.url || DEFAULT_SHEET_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 transition-colors"
-          >
-            <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Open in Google Sheets</span>
-          </a>
+          {sheetData.url ? (
+            <a
+              href={sheetData.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Open in Google Sheets</span>
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingUrl(true)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition-colors"
+            >
+              <Link2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Paste Google Sheet Link</span>
+            </button>
+          )}
 
           <button
             type="button"
-            onClick={handleSync}
-            disabled={syncing || loading}
+            onClick={() => handleSync()}
+            disabled={syncing || loading || !sheetData.url}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-colors disabled:opacity-50"
-            title="Fetch the latest live rows from Google Sheets"
+            title={sheetData.url ? 'Fetch the latest live rows from Google Sheets' : 'Paste and save a Google Sheet link first to sync'}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-emerald-400' : ''}`} />
             <span>{syncing ? 'Syncing...' : 'Sync from Google'}</span>
@@ -378,6 +431,114 @@ export const SheetBoard: React.FC = () => {
             <span className="hidden sm:inline">Export CSV</span>
           </button>
         </div>
+      </div>
+
+      {/* Google Sheet Connection & Link Management Bar */}
+      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 transition-all shadow-xl">
+        {editingUrl || !sheetData.url ? (
+          <form onSubmit={handleSaveUrl} className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-white">
+                <Link2 className="w-4 h-4 text-emerald-400" />
+                <span>{sheetData.url ? 'Change Google Sheet Link' : 'Connect Your Google Sheet'}</span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Paste your spreadsheet link to synchronize responses and embed the sheet
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="url"
+                  placeholder="Paste Google Sheet URL (e.g. https://docs.google.com/spreadsheets/d/your-sheet-id/edit)"
+                  value={sheetUrlInput}
+                  onChange={(e) => setSheetUrlInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 font-mono"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={urlSaving}
+                  className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center gap-1.5 flex-shrink-0 transition-all"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{urlSaving ? 'Saving...' : 'Save Sheet Link'}</span>
+                </button>
+                {sheetData.url && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSheetUrlInput(sheetData.url || '');
+                      setEditingUrl(false);
+                    }}
+                    className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+              <Info className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+              <span>Ensure your Google Sheet share setting is <strong>"Anyone with the link can view"</strong> (or edit) so Proctor+ can synchronize responses.</span>
+            </p>
+          </form>
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex-shrink-0">
+                <FileSpreadsheet className="w-5 h-5" />
+              </div>
+              <div className="overflow-hidden">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    Linked Google Sheet
+                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className="text-[10px] text-slate-400">Connected</span>
+                </div>
+                <div className="text-xs font-mono text-slate-200 truncate max-w-xl mt-0.5" title={sheetData.url}>
+                  {sheetData.url}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setSheetUrlInput(sheetData.url);
+                  setEditingUrl(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors text-xs font-semibold"
+                title="Change or update the linked Google Sheet URL"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Change Link</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (window.confirm('Disconnect this Google Sheet link?')) {
+                    setSheetUrlInput('');
+                    await saveSheetUrl('');
+                    setSheetData((prev) => ({ ...prev, url: '' }));
+                    showToast('Google Sheet disconnected.');
+                  }
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-red-400 border border-slate-800 transition-colors text-xs"
+                title="Disconnect Google Sheet"
+              >
+                <Unlink className="w-3.5 h-3.5" />
+                <span>Disconnect</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Notifications / Alerts */}
@@ -828,25 +989,48 @@ export const SheetBoard: React.FC = () => {
               </p>
             </div>
 
-            <a
-              href={sheetData.url || DEFAULT_SHEET_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold transition-colors flex-shrink-0"
-            >
-              <ExternalLink className="w-4 h-4" />
-              <span>Open in Full Browser Tab</span>
-            </a>
+            {sheetData.url && (
+              <a
+                href={sheetData.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold transition-colors flex-shrink-0"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>Open in Full Browser Tab</span>
+              </a>
+            )}
           </div>
 
-          <div className="w-full h-[750px] rounded-3xl border border-slate-800 overflow-hidden bg-slate-950 shadow-2xl relative">
-            <iframe
-              src={`https://docs.google.com/spreadsheets/d/1Fa_x25xdW0hQP_zWNavmRLaHmpyTHpgUObczmcx-ETE/edit?widget=true&headers=false`}
-              className="w-full h-full border-0"
-              title="Google Sheet Embedded Data Board"
-              allowFullScreen
-            />
-          </div>
+          {sheetId ? (
+            <div className="w-full h-[750px] rounded-3xl border border-slate-800 overflow-hidden bg-slate-950 shadow-2xl relative">
+              <iframe
+                src={`https://docs.google.com/spreadsheets/d/${sheetId}/edit?widget=true&headers=false`}
+                className="w-full h-full border-0"
+                title="Google Sheet Embedded Data Board"
+                allowFullScreen
+              />
+            </div>
+          ) : (
+            <div className="p-16 rounded-3xl border border-slate-800 bg-slate-900/60 text-center space-y-4 shadow-xl">
+              <div className="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center mx-auto text-emerald-400">
+                <FileSpreadsheet className="w-8 h-8" />
+              </div>
+              <div className="space-y-1.5 max-w-md mx-auto">
+                <h3 className="text-base font-bold text-white">No Google Sheet Connected</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Paste your Google Sheet link in the connection bar above to view, edit, and interact with the live spreadsheet frame directly inside Proctor+.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingUrl(true)}
+                className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.02]"
+              >
+                Paste Google Sheet Link
+              </button>
+            </div>
+          )}
         </div>
       )}
 

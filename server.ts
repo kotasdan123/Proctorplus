@@ -1008,8 +1008,8 @@ app.post('/api/violations', (req: Request, res: Response) => {
 // ---------------------------------------------------------------
 // GOOGLE SHEET DATA BOARD ENDPOINTS
 // ---------------------------------------------------------------
-
-const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1Fa_x25xdW0hQP_zWNavmRLaHmpyTHpgUObczmcx-ETE/edit?usp=sharing';
+// GOOGLE SHEET DATA BOARD BACKEND API
+// ---------------------------------------------------------------
 
 function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
@@ -1062,7 +1062,10 @@ function parseCSV(text: string): string[][] {
 }
 
 async function fetchGoogleSheetCSV(sheetUrl: string): Promise<{ headers: string[]; rows: string[][] }> {
-  let exportUrl = sheetUrl;
+  if (!sheetUrl || !sheetUrl.trim()) {
+    return { headers: [], rows: [] };
+  }
+  let exportUrl = sheetUrl.trim();
   const match = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (match && match[1]) {
     exportUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
@@ -1089,7 +1092,11 @@ app.get('/api/sheet', async (req: Request, res: Response) => {
       return res.json(db.sheetData);
     }
 
-    const url = db.sheetData?.url || DEFAULT_SHEET_URL;
+    const url = (db.sheetData?.url || '').trim();
+    if (!url) {
+      return res.json(db.sheetData || { url: '', lastSyncedAt: null, headers: [], rows: [] });
+    }
+
     const { headers, rows } = await fetchGoogleSheetCSV(url);
     db.sheetData = {
       url,
@@ -1108,10 +1115,34 @@ app.get('/api/sheet', async (req: Request, res: Response) => {
   }
 });
 
+// Update Sheet URL
+app.post('/api/sheet/url', (req: Request, res: Response) => {
+  const { url } = req.body || {};
+  const cleanedUrl = typeof url === 'string' ? url.trim() : '';
+
+  if (!db.sheetData) {
+    db.sheetData = {
+      url: cleanedUrl,
+      lastSyncedAt: null,
+      headers: [],
+      rows: []
+    };
+  } else {
+    db.sheetData.url = cleanedUrl;
+  }
+
+  saveDatabase(db);
+  broadcastUpdate('sheet_updated', db.sheetData);
+  res.json({ success: true, sheetData: db.sheetData });
+});
+
 // Force Sync from Google Sheet
 app.post('/api/sheet/sync', async (req: Request, res: Response) => {
   try {
-    const url = req.body?.url || db.sheetData?.url || DEFAULT_SHEET_URL;
+    const url = (req.body?.url ?? db.sheetData?.url ?? '').trim();
+    if (!url) {
+      return res.status(400).json({ error: 'No Google Sheet link provided. Please paste and save your Google Sheet link first.' });
+    }
     const { headers, rows } = await fetchGoogleSheetCSV(url);
     db.sheetData = {
       url,
@@ -1136,7 +1167,7 @@ app.post('/api/sheet/save', (req: Request, res: Response) => {
   }
   if (!db.sheetData) {
     db.sheetData = {
-      url: url || DEFAULT_SHEET_URL,
+      url: typeof url === 'string' ? url.trim() : '',
       lastSyncedAt: Date.now(),
       headers: headers || [],
       rows: []
@@ -1146,7 +1177,7 @@ app.post('/api/sheet/save', (req: Request, res: Response) => {
     db.sheetData.headers = headers;
   }
   db.sheetData.rows = rows;
-  if (url) db.sheetData.url = url;
+  if (typeof url === 'string') db.sheetData.url = url.trim();
   saveDatabase(db);
   broadcastUpdate('sheet_updated', db.sheetData);
   res.json({ success: true, sheetData: db.sheetData });
@@ -1183,7 +1214,7 @@ app.post('/api/sheet/row', (req: Request, res: Response) => {
   }
   if (!db.sheetData) {
     db.sheetData = {
-      url: DEFAULT_SHEET_URL,
+      url: '',
       lastSyncedAt: Date.now(),
       headers: [],
       rows: []
@@ -1209,6 +1240,45 @@ app.delete('/api/sheet/row/:index', (req: Request, res: Response) => {
   saveDatabase(db);
   broadcastUpdate('sheet_updated', db.sheetData);
   res.json({ success: true, removedRow: removed[0], remainingRows: db.sheetData.rows.length });
+});
+
+// Reset All System Data to Default (Danger Zone)
+app.post('/api/admin/reset-default', (req: Request, res: Response) => {
+  try {
+    // Delete all examination rooms
+    db.rooms = {};
+    // Delete all submissions & attempts
+    db.attempts = {};
+    // Delete all security violations
+    db.violations = {};
+    // Reset proctor accounts to factory default
+    db.proctors = JSON.parse(JSON.stringify(DEFAULT_STATE.proctors));
+    // Reset administrator credentials to factory default
+    db.config.admin = JSON.parse(JSON.stringify(DEFAULT_STATE.config.admin));
+    // Clear Google Sheet connection and data
+    db.sheetData = {
+      url: '',
+      lastSyncedAt: null,
+      headers: [],
+      rows: []
+    };
+
+    saveDatabase(db);
+
+    // Notify all connected clients in real time
+    broadcastUpdate('system_reset', {
+      timestamp: Date.now(),
+      message: 'All proctor accounts, examination rooms, submissions, and violations have been reset to factory default.'
+    });
+
+    res.json({
+      success: true,
+      message: 'System factory reset successfully executed. All rooms, submissions, and violations have been wiped, and proctor accounts have been restored to default.'
+    });
+  } catch (err: any) {
+    console.error('Error during system reset:', err);
+    res.status(500).json({ error: err.message || 'Failed to reset system data' });
+  }
 });
 
 // ---------------------------------------------------------------
