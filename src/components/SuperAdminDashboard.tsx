@@ -58,6 +58,8 @@ interface SuperAdminDashboardProps {
   onSwitchToProctorView?: () => void;
   onUpdateRoom?: (id: string, roomData: Partial<ExamRoom>) => Promise<void>;
   onDeleteRoom?: (id: string) => Promise<void>;
+  roomsError?: string | null;
+  onRetryLoadRooms?: () => void;
 }
 
 export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
@@ -70,7 +72,9 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   onLogout,
   onSwitchToProctorView,
   onUpdateRoom,
-  onDeleteRoom
+  onDeleteRoom,
+  roomsError,
+  onRetryLoadRooms
 }) => {
   const [activeTab, setActiveTab] = useState<'proctors' | 'all-rooms' | 'system'>('proctors');
   const [proctors, setProctors] = useState<ProctorAccount[]>([]);
@@ -717,6 +721,27 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         {/* TAB 2: ALL EXAMINATION ROOMS (CROSS-PROCTOR OVERSIGHT) */}
         {activeTab === 'all-rooms' && (
           <div className="space-y-6">
+            {roomsError && (
+              <div className="p-4 rounded-2xl bg-red-950/40 border border-red-800/80 text-red-200 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+                  <div>
+                    <p className="text-xs font-bold text-red-300">Firestore Room Sync Warning</p>
+                    <p className="text-xs text-red-400/90">{roomsError}</p>
+                  </div>
+                </div>
+                {onRetryLoadRooms && (
+                  <button
+                    type="button"
+                    onClick={onRetryLoadRooms}
+                    className="px-3.5 py-1.5 bg-red-800/80 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors shrink-0"
+                  >
+                    Retry Connection
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Filter toolbar */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
               <div className="relative flex-1 max-w-md">

@@ -503,53 +503,115 @@ export async function updateAdminCredentials(payload: {
 }
 
 // ---------------------------------------------------------------
-// EXAMINATION ROOMS API (Google Cloud Firestore + Multi-PC Sync)
+// EXAMINATION ROOMS API (Authoritative Google Cloud Firestore)
 // ---------------------------------------------------------------
 
-export async function fetchRooms(): Promise<ExamRoom[]> {
+/**
+ * Real-time subscription to examination rooms in Firestore.
+ * Automatically pushes room changes to all connected computers/browsers.
+ */
+export function subscribeToRooms(
+  onRooms: (rooms: ExamRoom[]) => void,
+  onError?: (err: Error) => void
+): () => void {
   try {
     const roomsCol = collection(db, 'rooms');
-    const q = query(roomsCol, orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-
-    if (!snap.empty) {
-      const items: ExamRoom[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        items.push({
-          id: docSnap.id,
-          roomNumber: String(data.roomNumber || ''),
-          passcode: String(data.passcode || ''),
-          title: String(data.title || 'Untitled Exam Room'),
-          description: String(data.description || ''),
-          formUrl: String(data.formUrl || ''),
-          antiCheat: Boolean(data.antiCheat),
-          maxViolations: Number(data.maxViolations) || 5,
-          timerEnabled: Boolean(data.timerEnabled),
-          durationMinutes: Number(data.durationMinutes) || 60,
-          startAt: data.startAt || '',
-          endAt: data.endAt || '',
-          active: data.active !== false,
-          createdAt: Number(data.createdAt) || Date.now(),
-          createdBy: data.createdBy || 'proctor',
-          createdByProctor: data.createdByProctor || data.createdBy || 'Proctor'
+    const unsubscribe = onSnapshot(
+      roomsCol,
+      (snapshot) => {
+        const items: ExamRoom[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          items.push({
+            id: docSnap.id,
+            roomNumber: String(data.roomNumber || ''),
+            passcode: String(data.passcode || ''),
+            title: String(data.title || 'Untitled Exam Room'),
+            description: String(data.description || ''),
+            formUrl: String(data.formUrl || ''),
+            antiCheat: Boolean(data.antiCheat),
+            maxViolations: Number(data.maxViolations) || 5,
+            timerEnabled: Boolean(data.timerEnabled),
+            durationMinutes: Number(data.durationMinutes) || 60,
+            startAt: data.startAt || '',
+            endAt: data.endAt || '',
+            active: data.active !== false,
+            createdAt: Number(data.createdAt) || 0,
+            createdBy: data.createdBy || 'proctor',
+            createdByProctor: data.createdByProctor || data.createdBy || 'Proctor'
+          });
         });
-      });
 
-      saveLocalRooms(items);
-      return items;
-    }
+        // Authoritative sort: newest created first
+        items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-    // If Firestore collection is empty, seed default room 611 into Firestore
-    await initFirestoreDefaults();
-    const fallbackRooms = getLocalRooms();
-    return fallbackRooms;
-  } catch (err) {
-    console.warn('Firestore fetchRooms error, using local fallback:', err);
-    return getLocalRooms();
+        // Update secondary local cache without overriding Firestore
+        saveLocalRooms(items);
+
+        onRooms(items);
+      },
+      (error) => {
+        console.error('Firestore room listener failed:', error);
+        if (onError) {
+          onError(error);
+        }
+      }
+    );
+
+    return unsubscribe;
+  } catch (err: any) {
+    console.error('Failed to setup Firestore room listener:', err);
+    if (onError) onError(err);
+    return () => {};
   }
 }
 
+/**
+ * Authoritative fetch of examination rooms directly from Firestore.
+ * Does NOT silently fall back to DEFAULT_ROOMS on error.
+ */
+export async function fetchRooms(): Promise<ExamRoom[]> {
+  try {
+    const roomsCol = collection(db, 'rooms');
+    const snap = await getDocs(roomsCol);
+
+    const items: ExamRoom[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      items.push({
+        id: docSnap.id,
+        roomNumber: String(data.roomNumber || ''),
+        passcode: String(data.passcode || ''),
+        title: String(data.title || 'Untitled Exam Room'),
+        description: String(data.description || ''),
+        formUrl: String(data.formUrl || ''),
+        antiCheat: Boolean(data.antiCheat),
+        maxViolations: Number(data.maxViolations) || 5,
+        timerEnabled: Boolean(data.timerEnabled),
+        durationMinutes: Number(data.durationMinutes) || 60,
+        startAt: data.startAt || '',
+        endAt: data.endAt || '',
+        active: data.active !== false,
+        createdAt: Number(data.createdAt) || 0,
+        createdBy: data.createdBy || 'proctor',
+        createdByProctor: data.createdByProctor || data.createdBy || 'Proctor'
+      });
+    });
+
+    items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    saveLocalRooms(items);
+    return items;
+  } catch (err) {
+    console.error('Failed to load rooms from Firestore:', err);
+    // Explicitly rethrow so the UI can distinguish between zero rooms vs Firestore error
+    throw err;
+  }
+}
+
+/**
+ * Create a new examination room directly in Google Cloud Firestore.
+ * Automatically synchronizes to all connected computers via real-time listeners.
+ */
 export async function createRoom(room: Partial<ExamRoom>): Promise<ExamRoom> {
   const roomId = room.id || `room-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const cleanRoomNumber = String(room.roomNumber || '').trim();
@@ -578,21 +640,25 @@ export async function createRoom(room: Partial<ExamRoom>): Promise<ExamRoom> {
     createdByProctor: room.createdByProctor || room.createdBy || 'Proctor'
   };
 
-  // 1. Write directly to Google Cloud Firestore
+  // Authoritative write to Firestore
   try {
     const roomRef = doc(db, 'rooms', roomId);
     await setDoc(roomRef, newRoom);
   } catch (error) {
+    console.error(`Failed to save room ${cleanRoomNumber} to Firestore:`, error);
     handleFirestoreError(error, OperationType.WRITE, `rooms/${roomId}`);
   }
 
-  // 2. Update local cache
+  // Update local cache
   const current = getLocalRooms().filter((r) => r.id !== roomId);
   saveLocalRooms([newRoom, ...current]);
 
   return newRoom;
 }
 
+/**
+ * Update an existing room in Google Cloud Firestore.
+ */
 export async function updateRoom(id: string, room: Partial<ExamRoom>): Promise<ExamRoom> {
   const existingRooms = getLocalRooms();
   const existing = existingRooms.find((r) => r.id === id);
@@ -602,45 +668,45 @@ export async function updateRoom(id: string, room: Partial<ExamRoom>): Promise<E
     id
   };
 
-  // 1. Write update to Google Cloud Firestore
+  // Authoritative write to Firestore
   try {
     const roomRef = doc(db, 'rooms', id);
-    await updateDoc(roomRef, {
-      ...room,
-      id
-    });
+    await setDoc(roomRef, updated, { merge: true });
   } catch (error) {
-    // If update fails because doc doesn't exist, try setDoc
-    try {
-      await setDoc(doc(db, 'rooms', id), updated, { merge: true });
-    } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, `rooms/${id}`);
-    }
+    console.error(`Failed to update room ${id} in Firestore:`, error);
+    handleFirestoreError(error, OperationType.UPDATE, `rooms/${id}`);
   }
 
-  // 2. Update local cache
+  // Update local cache
   const current = existingRooms.map((r) => (r.id === id ? updated : r));
   saveLocalRooms(current);
 
   return updated;
 }
 
+/**
+ * Delete a room from Google Cloud Firestore.
+ */
 export async function deleteRoom(id: string): Promise<{ success: boolean; id: string }> {
-  // 1. Delete from Google Cloud Firestore
   try {
     const roomRef = doc(db, 'rooms', id);
     await deleteDoc(roomRef);
   } catch (error) {
+    console.error(`Failed to delete room ${id} from Firestore:`, error);
     handleFirestoreError(error, OperationType.DELETE, `rooms/${id}`);
   }
 
-  // 2. Update local cache
+  // Update local cache
   const current = getLocalRooms().filter((r) => r.id !== id);
   saveLocalRooms(current);
 
   return { success: true, id };
 }
 
+/**
+ * Verify candidate room number & passcode against authoritative Firestore.
+ * Does NOT silently fabricate fallback rooms if Firestore fails.
+ */
 export async function verifyRoom(roomNumber: string, passcode: string): Promise<{
   success: boolean;
   room: ExamRoom;
@@ -652,56 +718,21 @@ export async function verifyRoom(roomNumber: string, passcode: string): Promise<
     throw new Error('Please enter both Room Number and Passcode.');
   }
 
-  // 1. Fetch fresh rooms from Google Cloud Firestore
+  // 1. Fetch fresh rooms from authoritative Firestore
   let rooms: ExamRoom[] = [];
   try {
     rooms = await fetchRooms();
-  } catch (err) {
-    console.warn('Could not fetch latest rooms from Firestore:', err);
-    rooms = getLocalRooms();
+  } catch (err: any) {
+    console.error('Firestore connection error during room verification:', err);
+    throw new Error('Unable to connect to the examination server. Please check your internet or Firebase connection and try again.');
   }
 
   // Match room number (case-insensitive and trimmed)
-  let match = rooms.find(
+  const match = rooms.find(
     (r) =>
       r.roomNumber.trim().toLowerCase() === cleanRoom &&
       (r.passcode.trim() === cleanPass || r.passcode.trim().toUpperCase() === cleanPass.toUpperCase())
   );
-
-  // If not found in memory, query Firestore directly by roomNumber
-  if (!match) {
-    try {
-      const roomsCol = collection(db, 'rooms');
-      const snap = await getDocs(roomsCol);
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as ExamRoom;
-        if (
-          data.roomNumber &&
-          String(data.roomNumber).trim().toLowerCase() === cleanRoom &&
-          (String(data.passcode).trim() === cleanPass ||
-            String(data.passcode).trim().toUpperCase() === cleanPass.toUpperCase())
-        ) {
-          match = { ...data, id: docSnap.id };
-        }
-      });
-    } catch (err) {
-      console.warn('Direct Firestore query failed:', err);
-    }
-  }
-
-  // Fallback to DEFAULT_ROOMS (e.g. room 611) if first time connecting
-  if (!match) {
-    const defaultMatch = DEFAULT_ROOMS.find(
-      (r) =>
-        r.roomNumber.trim().toLowerCase() === cleanRoom &&
-        (r.passcode.trim() === cleanPass || r.passcode.trim().toUpperCase() === cleanPass.toUpperCase())
-    );
-    if (defaultMatch) {
-      match = defaultMatch;
-      // Also auto-save to Firestore in background
-      setDoc(doc(db, 'rooms', defaultMatch.id), defaultMatch).catch(() => {});
-    }
-  }
 
   if (!match) {
     throw new Error(`Invalid Room Number "${roomNumber}" or Passcode. Please verify your credentials and try again.`);
@@ -880,16 +911,56 @@ export async function recordViolation(attemptId: string, reason: string): Promis
 // REAL-TIME SYNC VIA GOOGLE CLOUD FIRESTORE + SSE
 // ---------------------------------------------------------------
 
-export function subscribeToEvents(onUpdate: (event: any) => void): () => void {
+export function subscribeToEvents(
+  onUpdate: (event: any) => void,
+  onRoomsUpdate?: (rooms: ExamRoom[]) => void,
+  onRoomsError?: (err: Error) => void
+): () => void {
   const unsubscribers: (() => void)[] = [];
 
   try {
-    // 1. Listen to real-time rooms changes in Firestore
-    const unsubRooms = onSnapshot(collection(db, 'rooms'), (snapshot) => {
-      onUpdate({ type: 'rooms_updated', count: snapshot.size });
-    }, (err) => {
-      console.warn('Firestore rooms onSnapshot:', err);
-    });
+    // 1. Listen to real-time rooms changes in Firestore directly
+    const unsubRooms = onSnapshot(
+      collection(db, 'rooms'),
+      (snapshot) => {
+        const items: ExamRoom[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          items.push({
+            id: docSnap.id,
+            roomNumber: String(data.roomNumber || ''),
+            passcode: String(data.passcode || ''),
+            title: String(data.title || 'Untitled Exam Room'),
+            description: String(data.description || ''),
+            formUrl: String(data.formUrl || ''),
+            antiCheat: Boolean(data.antiCheat),
+            maxViolations: Number(data.maxViolations) || 5,
+            timerEnabled: Boolean(data.timerEnabled),
+            durationMinutes: Number(data.durationMinutes) || 60,
+            startAt: data.startAt || '',
+            endAt: data.endAt || '',
+            active: data.active !== false,
+            createdAt: Number(data.createdAt) || 0,
+            createdBy: data.createdBy || 'proctor',
+            createdByProctor: data.createdByProctor || data.createdBy || 'Proctor'
+          });
+        });
+
+        items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        saveLocalRooms(items);
+
+        if (onRoomsUpdate) {
+          onRoomsUpdate(items);
+        }
+        onUpdate({ type: 'rooms_updated', count: items.length, rooms: items });
+      },
+      (err) => {
+        console.error('Firestore rooms onSnapshot failed:', err);
+        if (onRoomsError) {
+          onRoomsError(err);
+        }
+      }
+    );
     unsubscribers.push(unsubRooms);
 
     // 2. Listen to real-time attempts in Firestore
@@ -908,7 +979,7 @@ export function subscribeToEvents(onUpdate: (event: any) => void): () => void {
     });
     unsubscribers.push(unsubViolations);
   } catch (e) {
-    console.warn('Firestore real-time listeners setup note:', e);
+    console.error('Firestore real-time listeners setup note:', e);
   }
 
   // Also support Server-Sent Events if running with local backend

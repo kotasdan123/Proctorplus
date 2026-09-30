@@ -46,6 +46,7 @@ export default function App() {
   });
 
   const [rooms, setRooms] = useState<ExamRoom[]>([]);
+  const [roomsError, setRoomsError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
   const [violations, setViolations] = useState<SecurityViolation[]>([]);
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
@@ -98,28 +99,47 @@ export default function App() {
     }
   }, [session]);
 
-  // Load all initial data
+  // Load all initial data from authoritative sources
   const loadData = useCallback(async () => {
     try {
-      const [roomsData, attemptsData, violationsData, configData, statusData] = await Promise.all([
-        fetchRooms().catch(() => []),
+      let roomsData: ExamRoom[] = [];
+      let fetchRoomsFailed = false;
+      let roomsFetchError: any = null;
+
+      try {
+        roomsData = await fetchRooms();
+      } catch (err: any) {
+        fetchRoomsFailed = true;
+        roomsFetchError = err;
+      }
+
+      const [attemptsData, violationsData, configData, statusData] = await Promise.all([
         fetchAttempts().catch(() => []),
         fetchViolations().catch(() => []),
         fetchConfig().catch(() => null),
         fetchStatus().catch(() => null)
       ]);
 
-      setRooms(roomsData);
+      if (!fetchRoomsFailed) {
+        setRooms(roomsData);
+        setRoomsError(null);
+        if (session?.role === 'room') {
+          const found = roomsData.find((r) => r.id === session.roomId);
+          if (found) setCurrentRoom(found);
+        }
+      } else {
+        console.error('Failed to load rooms from Firestore:', roomsFetchError);
+        const errorMsg =
+          roomsFetchError?.message?.includes('permission-denied')
+            ? 'Permission error connecting to Firestore rooms collection.'
+            : 'Unable to load examination rooms from Firestore. Please check your connection.';
+        setRoomsError(errorMsg);
+      }
+
       setAttempts(attemptsData);
       setViolations(violationsData);
       if (configData) setSystemConfig(configData);
       if (statusData?.connectedPCs) setConnectedPCs(statusData.connectedPCs);
-
-      // If user has active room session, sync current room
-      if (session?.role === 'room') {
-        const found = roomsData.find((r) => r.id === session.roomId);
-        if (found) setCurrentRoom(found);
-      }
     } catch (err) {
       console.error('Failed to load application data:', err);
     } finally {
@@ -132,19 +152,44 @@ export default function App() {
   useEffect(() => {
     loadData();
 
-    // Subscribe to SSE updates
-    const unsubscribe = subscribeToEvents(() => {
-      loadData();
-    });
+    // Subscribe to authoritative real-time room updates directly via Firestore snapshot
+    const unsubscribe = subscribeToEvents(
+      (event) => {
+        if (event.type !== 'rooms_updated') {
+          loadData();
+        }
+      },
+      (realtimeRooms) => {
+        // Direct stream from Firestore onSnapshot
+        setRooms(realtimeRooms);
+        setRoomsError(null);
 
-    // Fallback periodic poll every 4s
-    const interval = setInterval(loadData, 4000);
+        if (session?.role === 'room') {
+          const found = realtimeRooms.find((r) => r.id === session.roomId);
+          if (found) setCurrentRoom(found);
+        }
+      },
+      (firestoreErr) => {
+        console.error('Real-time rooms listener error:', firestoreErr);
+        const errorMsg =
+          firestoreErr?.message?.includes('permission-denied')
+            ? 'Permission error on Firestore rooms listener.'
+            : 'Unable to stream real-time examination rooms from Firestore.';
+        setRoomsError(errorMsg);
+      }
+    );
+
+    // Periodic safety sync every 10s for other components
+    const interval = setInterval(() => {
+      fetchAttempts().then(setAttempts).catch(() => {});
+      fetchViolations().then(setViolations).catch(() => {});
+    }, 10000);
 
     return () => {
       unsubscribe();
       clearInterval(interval);
     };
-  }, [loadData]);
+  }, [loadData, session]);
 
   // Handlers with Loading Transitions
   const handleRoomJoined = (newSession: ParticipantSession, room: ExamRoom) => {
@@ -273,18 +318,21 @@ export default function App() {
   };
 
   const handleCreateRoom = async (roomData: Partial<ExamRoom>) => {
-    await createRoom(roomData);
-    await loadData();
+    const created = await createRoom(roomData);
+    setRooms((prev) => {
+      if (prev.some((r) => r.id === created.id)) return prev;
+      return [created, ...prev];
+    });
   };
 
   const handleUpdateRoom = async (id: string, roomData: Partial<ExamRoom>) => {
-    await updateRoom(id, roomData);
-    await loadData();
+    const updated = await updateRoom(id, roomData);
+    setRooms((prev) => prev.map((r) => (r.id === id ? updated : r)));
   };
 
   const handleDeleteRoom = async (id: string) => {
     await deleteRoom(id);
-    await loadData();
+    setRooms((prev) => prev.filter((r) => r.id !== id));
   };
 
   // Render primary view
@@ -332,6 +380,8 @@ export default function App() {
           }}
           onUpdateRoom={handleUpdateRoom}
           onDeleteRoom={handleDeleteRoom}
+          roomsError={roomsError}
+          onRetryLoadRooms={loadData}
         />
       );
     }
@@ -355,6 +405,8 @@ export default function App() {
           onUpdateRoom={handleUpdateRoom}
           onDeleteRoom={handleDeleteRoom}
           onConfigUpdated={(config) => setSystemConfig(config)}
+          roomsError={roomsError}
+          onRetryLoadRooms={loadData}
         />
       );
     }

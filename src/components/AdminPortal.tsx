@@ -52,6 +52,8 @@ interface AdminPortalProps {
   onUpdateRoom: (id: string, roomData: Partial<ExamRoom>) => Promise<void>;
   onDeleteRoom: (id: string) => Promise<void>;
   onConfigUpdated: (config: SystemConfig) => void;
+  roomsError?: string | null;
+  onRetryLoadRooms?: () => void;
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
@@ -65,7 +67,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onCreateRoom,
   onUpdateRoom,
   onDeleteRoom,
-  onConfigUpdated
+  onConfigUpdated,
+  roomsError,
+  onRetryLoadRooms
 }) => {
   const [currentPage, setCurrentPage] = useState<
     'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings' | 'sheet'
@@ -625,17 +629,55 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </button>
               </div>
 
-              {rooms.length === 0 ? (
-                <div className="p-12 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
-                  <p className="text-sm text-slate-400">No examination rooms created yet.</p>
-                  <button
-                    type="button"
-                    onClick={() => setCreateModalOpen(true)}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold"
-                  >
-                    Create Your First Room
-                  </button>
+              {roomsError && (
+                <div className="p-4 rounded-2xl bg-red-950/40 border border-red-800/80 text-red-200 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-red-300">Firestore Room Sync Alert</p>
+                      <p className="text-xs text-red-400/90">{roomsError}</p>
+                    </div>
+                  </div>
+                  {onRetryLoadRooms && (
+                    <button
+                      type="button"
+                      onClick={onRetryLoadRooms}
+                      className="px-3.5 py-1.5 bg-red-800/80 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors shrink-0"
+                    >
+                      Retry Connection
+                    </button>
+                  )}
                 </div>
+              )}
+
+              {rooms.length === 0 ? (
+                roomsError ? (
+                  <div className="p-12 text-center rounded-3xl bg-slate-900 border border-red-900/50 space-y-3">
+                    <AlertCircle className="w-8 h-8 text-red-400 mx-auto" />
+                    <p className="text-sm font-bold text-red-400">Unable to load examination rooms from Firestore.</p>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">{roomsError}</p>
+                    {onRetryLoadRooms && (
+                      <button
+                        type="button"
+                        onClick={onRetryLoadRooms}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors"
+                      >
+                        Retry Connection
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-12 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
+                    <p className="text-sm text-slate-400">No examination rooms created yet in the database.</p>
+                    <button
+                      type="button"
+                      onClick={() => setCreateModalOpen(true)}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold"
+                    >
+                      Create Your First Room
+                    </button>
+                  </div>
+                )
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {rooms.map((room) => {

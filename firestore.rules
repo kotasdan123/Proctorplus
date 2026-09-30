@@ -13,7 +13,7 @@ service cloud.firestore {
 
     // Examination Rooms: Anyone can read active rooms to join with passcode
     match /rooms/{roomId} {
-      allow read: if isValidId(roomId);
+      allow read: if true;
       allow create, update: if isValidId(roomId)
         && request.resource.data.roomNumber is string
         && request.resource.data.roomNumber.size() > 0
@@ -26,7 +26,7 @@ service cloud.firestore {
 
     // Admin accounts: Used for centralized admin credentials across PCs
     match /admins/{adminId} {
-      allow read: if isValidId(adminId);
+      allow read: if true;
       allow create, update: if isValidId(adminId)
         && request.resource.data.username is string
         && request.resource.data.username.size() > 0;
@@ -35,7 +35,7 @@ service cloud.firestore {
 
     // Proctor accounts: Managed by Super Admin
     match /proctors/{proctorId} {
-      allow read: if isValidId(proctorId);
+      allow read: if true;
       allow create, update: if isValidId(proctorId)
         && request.resource.data.username is string
         && request.resource.data.username.size() > 0;
@@ -44,7 +44,7 @@ service cloud.firestore {
 
     // Exam attempts: Created and updated by examinees and proctor dashboard
     match /attempts/{attemptId} {
-      allow read: if isValidId(attemptId);
+      allow read: if true;
       allow create: if isValidId(attemptId)
         && request.resource.data.examId is string
         && request.resource.data.participantName is string;
@@ -54,7 +54,7 @@ service cloud.firestore {
 
     // Security violations: Recorded during proctored exam sessions
     match /violations/{violationId} {
-      allow read: if isValidId(violationId);
+      allow read: if true;
       allow create: if isValidId(violationId)
         && request.resource.data.attemptId is string
         && request.resource.data.reason is string;
