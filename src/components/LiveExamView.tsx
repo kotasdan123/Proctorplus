@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ExamRoom, ExamAttempt } from '../types';
 import { Clock, ShieldAlert, AlertTriangle, CheckCircle2, RotateCw, Send, Maximize2, Shield } from 'lucide-react';
 import { recordViolation, updateAttempt } from '../lib/api';
+import { ExamCalculator } from './ExamCalculator';
 
 interface LiveExamViewProps {
   room: ExamRoom;
@@ -468,6 +469,9 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
           }}
         />
       </main>
+
+      {/* Floating Exam Tools (Draggable Standard Calculator) */}
+      <ExamCalculator />
 
       {/* Anti-Cheat Violation Modal Overlay */}
       {violationOverlay.show && (

@@ -5,7 +5,8 @@ import {
   SystemConfig,
   FirebaseConfig,
   SheetData,
-  ProctorAccount
+  ProctorAccount,
+  AdminControlSettings
 } from '../types';
 import {
   collection,
@@ -1204,6 +1205,61 @@ export async function saveSheetUrl(url: string): Promise<SheetData> {
     // Ignore
   }
   return current;
+}
+
+// ---------------------------------------------------------------
+// ADMIN CONTROLS SETTINGS API
+// ---------------------------------------------------------------
+
+const PROCTOR_ADMIN_SETTINGS_KEY = 'proctor_admin_controls_settings_v2';
+
+export const DEFAULT_ADMIN_SETTINGS: AdminControlSettings = {
+  defaultDurationMinutes: 120,
+  defaultMaxViolations: 5,
+  strictAntiCheat: true,
+  blockDevTools: true,
+  detectTabSwitch: true,
+  allowFormReload: true,
+  requireRoomPasscode: true,
+  showResultAudit: true,
+  autoEjectOnLimit: true,
+  syncMode: 'firebase'
+};
+
+export function getAdminSettings(): AdminControlSettings {
+  try {
+    const saved = localStorage.getItem(PROCTOR_ADMIN_SETTINGS_KEY);
+    if (saved) {
+      return { ...DEFAULT_ADMIN_SETTINGS, ...JSON.parse(saved) };
+    }
+  } catch {
+    // Fallback
+  }
+  return DEFAULT_ADMIN_SETTINGS;
+}
+
+export async function saveAdminSettings(
+  updated: Partial<AdminControlSettings>
+): Promise<AdminControlSettings> {
+  const current = getAdminSettings();
+  const merged: AdminControlSettings = { ...current, ...updated };
+  try {
+    localStorage.setItem(PROCTOR_ADMIN_SETTINGS_KEY, JSON.stringify(merged));
+  } catch {
+    // Ignore storage quota
+  }
+
+  // Persist to Cloud Firestore config
+  try {
+    await setDoc(doc(db, 'config', 'admin_settings'), {
+      ...merged,
+      updatedAt: Date.now()
+    }, { merge: true });
+  } catch (err) {
+    console.warn('Note on saving admin settings to Firestore:', err);
+  }
+
+  return merged;
 }
 
 // ---------------------------------------------------------------

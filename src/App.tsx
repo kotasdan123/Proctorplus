@@ -382,6 +382,10 @@ export default function App() {
           onDeleteRoom={handleDeleteRoom}
           roomsError={roomsError}
           onRetryLoadRooms={loadData}
+          onResetAllToDefault={async () => {
+            await loadData();
+          }}
+          onConfigUpdated={(config) => setSystemConfig(config)}
         />
       );
     }

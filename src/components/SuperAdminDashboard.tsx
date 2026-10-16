@@ -28,7 +28,12 @@ import {
   Layers,
   Sparkles,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Settings,
+  SlidersHorizontal,
+  Save,
+  Database,
+  AlertTriangle
 } from 'lucide-react';
 import {
   ProctorAccount,
@@ -36,14 +41,18 @@ import {
   ExamAttempt,
   SecurityViolation,
   SystemConfig,
-  SuperAdminSession
+  SuperAdminSession,
+  AdminControlSettings
 } from '../types';
 import {
   fetchProctors,
   createProctor,
   updateProctor,
   deleteProctor,
-  updateAdminCredentials
+  updateAdminCredentials,
+  getAdminSettings,
+  saveAdminSettings,
+  resetAllToDefault
 } from '../lib/api';
 import { LoadingScreen } from './LoadingScreen';
 
@@ -60,6 +69,8 @@ interface SuperAdminDashboardProps {
   onDeleteRoom?: (id: string) => Promise<void>;
   roomsError?: string | null;
   onRetryLoadRooms?: () => void;
+  onResetAllToDefault?: () => Promise<void>;
+  onConfigUpdated?: (config: SystemConfig) => void;
 }
 
 export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({

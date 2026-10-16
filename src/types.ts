@@ -58,6 +58,19 @@ export interface FirebaseConfig {
   enabled: boolean;
 }
 
+export interface AdminControlSettings {
+  defaultDurationMinutes: number;
+  defaultMaxViolations: number;
+  strictAntiCheat: boolean;
+  blockDevTools: boolean;
+  detectTabSwitch: boolean;
+  allowFormReload: boolean;
+  requireRoomPasscode: boolean;
+  showResultAudit: boolean;
+  autoEjectOnLimit: boolean;
+  syncMode: 'firebase' | 'server';
+}
+
 export interface SystemConfig {
   syncMode: 'server' | 'firebase';
   firebase: FirebaseConfig;
