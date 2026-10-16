@@ -470,8 +470,8 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
         />
       </main>
 
-      {/* Floating Exam Tools (Draggable Standard Calculator) */}
-      <ExamCalculator />
+      {/* Floating Exam Tools (Draggable Standard Calculator) - Only if enabled for this room */}
+      {room.calculatorEnabled !== false && <ExamCalculator />}
 
       {/* Anti-Cheat Violation Modal Overlay */}
       {violationOverlay.show && (

@@ -39,6 +39,7 @@ interface RoomRecord {
   startAt?: string;
   endAt?: string;
   active: boolean;
+  calculatorEnabled?: boolean;
   createdAt: number;
   createdBy: string;
   createdByProctor?: string;
@@ -132,6 +133,7 @@ const DEFAULT_STATE: DBState = {
       maxViolations: 5,
       timerEnabled: true,
       durationMinutes: 45,
+      calculatorEnabled: true,
       startAt: '',
       endAt: '',
       active: true,
@@ -680,6 +682,7 @@ app.post('/api/rooms', (req: Request, res: Response) => {
     maxViolations,
     timerEnabled,
     durationMinutes,
+    calculatorEnabled,
     startAt,
     endAt,
     active
@@ -725,6 +728,7 @@ app.post('/api/rooms', (req: Request, res: Response) => {
     maxViolations: Math.max(1, Number(maxViolations) || 3),
     timerEnabled: timerEnabled !== false,
     durationMinutes: Math.max(1, Number(durationMinutes) || 60),
+    calculatorEnabled: calculatorEnabled !== false,
     startAt: startAt || '',
     endAt: endAt || '',
     active: active !== false,
@@ -756,6 +760,7 @@ app.put('/api/rooms/:id', (req: Request, res: Response) => {
     maxViolations,
     timerEnabled,
     durationMinutes,
+    calculatorEnabled,
     startAt,
     endAt,
     active
@@ -784,6 +789,7 @@ app.put('/api/rooms/:id', (req: Request, res: Response) => {
     if (maxViolations !== undefined) existing.maxViolations = Math.max(1, Number(maxViolations) || 3);
     if (timerEnabled !== undefined) existing.timerEnabled = Boolean(timerEnabled);
     if (durationMinutes !== undefined) existing.durationMinutes = Math.max(1, Number(durationMinutes) || 60);
+    if (calculatorEnabled !== undefined) existing.calculatorEnabled = Boolean(calculatorEnabled);
     if (startAt !== undefined) existing.startAt = startAt;
     if (endAt !== undefined) existing.endAt = endAt;
     if (active !== undefined) existing.active = Boolean(active);
@@ -807,6 +813,7 @@ app.put('/api/rooms/:id', (req: Request, res: Response) => {
       maxViolations: Math.max(1, Number(maxViolations) || 3),
       timerEnabled: timerEnabled !== false,
       durationMinutes: Math.max(1, Number(durationMinutes) || 60),
+      calculatorEnabled: calculatorEnabled !== false,
       startAt: startAt || '',
       endAt: endAt || '',
       active: active !== false,

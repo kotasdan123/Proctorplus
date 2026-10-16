@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ExamRoom } from '../types';
-import { X, RefreshCw, AlertCircle, ShieldCheck, Clock, FileText, CheckCircle2 } from 'lucide-react';
+import { X, RefreshCw, AlertCircle, ShieldCheck, Clock, FileText, CheckCircle2, Calculator } from 'lucide-react';
 
 interface RoomModalProps {
   room?: ExamRoom | null;
@@ -36,6 +36,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
   const [maxViolations, setMaxViolations] = useState(room?.maxViolations !== undefined ? room.maxViolations : 5);
   const [startAt, setStartAt] = useState(room?.startAt ? room.startAt.slice(0, 16) : '');
   const [endAt, setEndAt] = useState(room?.endAt ? room.endAt.slice(0, 16) : '');
+  const [calculatorEnabled, setCalculatorEnabled] = useState(room?.calculatorEnabled !== undefined ? room.calculatorEnabled : true);
   const [active, setActive] = useState(room ? room.active : true);
 
   const [loading, setLoading] = useState(false);
@@ -77,6 +78,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
         durationMinutes: Number(durationMinutes) || 60,
         antiCheat,
         maxViolations: Math.max(1, Number(maxViolations) || 5),
+        calculatorEnabled,
         startAt: startAt ? new Date(startAt).toISOString() : '',
         endAt: endAt ? new Date(endAt).toISOString() : '',
         active
@@ -289,6 +291,35 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Calculator Tool Setting */}
+          <div className="p-4 rounded-xl bg-slate-800/30 border border-slate-800">
+            <div className="flex items-center justify-between gap-3 mb-1.5">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="calculatorEnabled"
+                  checked={calculatorEnabled}
+                  onChange={(e) => setCalculatorEnabled(e.target.checked)}
+                  className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4 bg-slate-900 cursor-pointer"
+                />
+                <label htmlFor="calculatorEnabled" className="text-xs font-semibold text-slate-200 flex items-center gap-1.5 cursor-pointer">
+                  <Calculator className="w-4 h-4 text-emerald-400" />
+                  <span>On-Screen Calculator Tool</span>
+                </label>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                calculatorEnabled
+                  ? 'bg-emerald-950/70 border border-emerald-800 text-emerald-400'
+                  : 'bg-slate-900 border border-slate-700 text-slate-400'
+              }`}>
+                {calculatorEnabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed pl-6">
+              When enabled, examinees can access the floating draggable calculator during the exam, and instructions will be provided on their reminder screen. When disabled, the tool is turned off and no calculator instructions are displayed.
+            </p>
           </div>
 
           {/* Schedule & Active State */}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ExamRoom, ExamAttempt, ParticipantSession } from '../types';
-import { Clock, ShieldCheck, Users, LogOut, ArrowRight, Play, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Clock, ShieldCheck, Users, LogOut, ArrowRight, Play, CheckCircle2, AlertCircle, Calculator } from 'lucide-react';
 
 interface ParticipantRoomDashboardProps {
   room: ExamRoom;
@@ -106,7 +106,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
         </div>
 
         {/* Exam Specifications */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
             <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">
               <Clock className="w-4 h-4" />
@@ -128,6 +128,16 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">
+              <Calculator className="w-4 h-4" />
+              <span>Calculator</span>
+            </div>
+            <div className={`text-lg font-bold ${room.calculatorEnabled !== false ? 'text-emerald-400' : 'text-slate-500'}`}>
+              {room.calculatorEnabled !== false ? 'Allowed' : 'Disabled'}
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
               Your Sessions
             </div>
@@ -136,7 +146,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 col-span-2 sm:col-span-1">
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
               Passcode
             </div>
@@ -246,6 +256,17 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <span>Complete and submit the Google Form before clicking "Submit Exam".</span>
               </li>
+              {room.calculatorEnabled !== false && (
+                <li className="flex items-start gap-2 bg-emerald-950/30 p-2.5 rounded-lg border border-emerald-800/40">
+                  <Calculator className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-white block text-xs">Calculator Tool Allowed</span>
+                    <span className="text-slate-300 text-[11px] leading-relaxed block mt-0.5">
+                      An on-screen calculator is enabled for this exam. Use the floating <strong>"Tools"</strong> button in the bottom-right corner to open or close it anytime. You can drag and reposition the calculator anywhere across your screen so it does not obstruct exam questions.
+                    </span>
+                  </div>
+                </li>
+              )}
             </ul>
 
             <div className="flex items-center justify-end gap-3">

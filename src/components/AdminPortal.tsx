@@ -33,7 +33,8 @@ import {
   Lock,
   KeyRound,
   Table,
-  AlertTriangle
+  AlertTriangle,
+  Calculator
 } from 'lucide-react';
 import { RoomModal } from './RoomModal';
 import { FirebaseConfigModal } from './FirebaseConfigModal';
@@ -747,6 +748,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 Ejection: {room.maxViolations || 5} violations
                               </span>
                             )}
+                            {room.calculatorEnabled !== false ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-950/60 border-emerald-800 text-emerald-300 flex items-center gap-1">
+                                <Calculator className="w-3 h-3" />
+                                <span>Calc: On</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-slate-900 border-slate-700 text-slate-400">
+                                Calc: Off
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -1430,21 +1441,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
 
             {/* Specifications & Violation Ejection Limit */}
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="p-2.5 bg-slate-800/60 border border-slate-700/60 rounded-xl">
+            <div className="grid grid-cols-4 gap-2 text-center">
+              <div className="p-2 bg-slate-800/60 border border-slate-700/60 rounded-xl">
                 <span className="text-[9px] text-slate-400 uppercase block">Timer</span>
                 <strong className="text-xs text-white">
-                  {viewRoomModal.timerEnabled ? `${viewRoomModal.durationMinutes} min` : 'Off'}
+                  {viewRoomModal.timerEnabled ? `${viewRoomModal.durationMinutes}m` : 'Off'}
                 </strong>
               </div>
-              <div className="p-2.5 bg-slate-800/60 border border-slate-700/60 rounded-xl">
+              <div className="p-2 bg-slate-800/60 border border-slate-700/60 rounded-xl">
                 <span className="text-[9px] text-slate-400 uppercase block">Anti-Cheat</span>
                 <strong className="text-xs text-emerald-400">
                   {viewRoomModal.antiCheat ? 'Active' : 'Off'}
                 </strong>
               </div>
-              <div className="p-2.5 bg-amber-950/30 border border-amber-500/30 rounded-xl">
-                <span className="text-[9px] text-amber-400 uppercase block font-bold">Violation Limit</span>
+              <div className="p-2 bg-slate-800/60 border border-slate-700/60 rounded-xl">
+                <span className="text-[9px] text-slate-400 uppercase block">Calculator</span>
+                <strong className={`text-xs ${viewRoomModal.calculatorEnabled !== false ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  {viewRoomModal.calculatorEnabled !== false ? 'On' : 'Off'}
+                </strong>
+              </div>
+              <div className="p-2 bg-amber-950/30 border border-amber-500/30 rounded-xl">
+                <span className="text-[9px] text-amber-400 uppercase block font-bold">Limit</span>
                 <strong className="text-xs text-amber-300">
                   {viewRoomModal.antiCheat ? `${viewRoomModal.maxViolations || 5} max` : 'None'}
                 </strong>

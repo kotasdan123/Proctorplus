@@ -12,6 +12,7 @@ export interface ExamRoom {
   startAt?: string;
   endAt?: string;
   active: boolean;
+  calculatorEnabled?: boolean;
   createdAt: number;
   createdBy: string; // e.g. proctor username or name
   createdByProctor?: string; // friendly proctor attribution
@@ -56,19 +57,6 @@ export interface FirebaseConfig {
   messagingSenderId?: string;
   appId?: string;
   enabled: boolean;
-}
-
-export interface AdminControlSettings {
-  defaultDurationMinutes: number;
-  defaultMaxViolations: number;
-  strictAntiCheat: boolean;
-  blockDevTools: boolean;
-  detectTabSwitch: boolean;
-  allowFormReload: boolean;
-  requireRoomPasscode: boolean;
-  showResultAudit: boolean;
-  autoEjectOnLimit: boolean;
-  syncMode: 'firebase' | 'server';
 }
 
 export interface SystemConfig {
