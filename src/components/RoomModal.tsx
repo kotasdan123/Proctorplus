@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ExamRoom } from '../types';
-import { X, RefreshCw, AlertCircle, ShieldCheck, Clock, FileText, CheckCircle2, Calculator } from 'lucide-react';
+import { X, RefreshCw, AlertCircle, ShieldCheck, Clock, FileText, CheckCircle2, Calculator, Calendar } from 'lucide-react';
 
 interface RoomModalProps {
   room?: ExamRoom | null;
@@ -34,6 +34,9 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
   const [durationMinutes, setDurationMinutes] = useState(room?.durationMinutes || 60);
   const [antiCheat, setAntiCheat] = useState(room ? room.antiCheat : true);
   const [maxViolations, setMaxViolations] = useState(room?.maxViolations !== undefined ? room.maxViolations : 5);
+  const [availabilityEnabled, setAvailabilityEnabled] = useState(
+    room?.availabilityEnabled !== undefined ? room.availabilityEnabled : Boolean(room?.startAt || room?.endAt)
+  );
   const [startAt, setStartAt] = useState(room?.startAt ? room.startAt.slice(0, 16) : '');
   const [endAt, setEndAt] = useState(room?.endAt ? room.endAt.slice(0, 16) : '');
   const [calculatorEnabled, setCalculatorEnabled] = useState(room?.calculatorEnabled !== undefined ? room.calculatorEnabled : true);
@@ -79,8 +82,9 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
         antiCheat,
         maxViolations: Math.max(1, Number(maxViolations) || 5),
         calculatorEnabled,
-        startAt: startAt ? new Date(startAt).toISOString() : '',
-        endAt: endAt ? new Date(endAt).toISOString() : '',
+        availabilityEnabled,
+        startAt: availabilityEnabled && startAt ? new Date(startAt).toISOString() : '',
+        endAt: availabilityEnabled && endAt ? new Date(endAt).toISOString() : '',
         active
       });
       onClose();
@@ -322,26 +326,80 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
             </p>
           </div>
 
-          {/* Schedule & Active State */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Available From (Optional)</label>
-              <input
-                type="datetime-local"
-                value={startAt}
-                onChange={(e) => setStartAt(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
-              />
+          {/* Schedule & Availability Window Setting */}
+          <div className="p-4 rounded-xl bg-slate-800/30 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="availabilityEnabled"
+                  checked={availabilityEnabled}
+                  onChange={(e) => setAvailabilityEnabled(e.target.checked)}
+                  className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4 bg-slate-900 cursor-pointer"
+                />
+                <label htmlFor="availabilityEnabled" className="text-xs font-semibold text-slate-200 flex items-center gap-1.5 cursor-pointer">
+                  <Calendar className="w-4 h-4 text-emerald-400" />
+                  <span>Schedule Availability Window (Date &amp; Time)</span>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {availabilityEnabled && (startAt || endAt) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStartAt('');
+                      setEndAt('');
+                    }}
+                    className="text-[11px] text-amber-400 hover:text-amber-300 font-medium transition-colors"
+                  >
+                    Clear Dates
+                  </button>
+                )}
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                  availabilityEnabled
+                    ? 'bg-blue-950/70 border border-blue-800 text-blue-400'
+                    : 'bg-slate-900 border border-slate-700 text-slate-400'
+                }`}>
+                  {availabilityEnabled ? 'Enforced' : 'Disabled (Open Anytime)'}
+                </span>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Available Until (Optional)</label>
-              <input
-                type="datetime-local"
-                value={endAt}
-                onChange={(e) => setEndAt(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
-              />
-            </div>
+
+            <p className="text-[11px] text-slate-400 leading-relaxed pl-6">
+              {availabilityEnabled
+                ? 'When enabled, examinees can ONLY enter this room between the set start and end date/time. Attempts before or after this window will be rejected with an availability notice.'
+                : 'Availability option is disabled. Examinees can join and take exams anytime as long as the room is Active.'}
+            </p>
+
+            {availabilityEnabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800/60 pl-6">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Opens At (Date &amp; Time)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={startAt}
+                    onChange={(e) => setStartAt(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 font-mono"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Earliest moment examinees may enter</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Closes At (Date &amp; Time)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={endAt}
+                    onChange={(e) => setEndAt(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 font-mono"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Room closes and locks after this time</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2.5 pt-2">

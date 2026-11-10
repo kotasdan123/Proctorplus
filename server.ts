@@ -38,6 +38,8 @@ interface RoomRecord {
   durationMinutes: number;
   startAt?: string;
   endAt?: string;
+  availabilityEnabled?: boolean;
+  visitsCount?: number;
   active: boolean;
   calculatorEnabled?: boolean;
   createdAt: number;
@@ -685,6 +687,7 @@ app.post('/api/rooms', (req: Request, res: Response) => {
     calculatorEnabled,
     startAt,
     endAt,
+    availabilityEnabled,
     active
   } = req.body;
 
@@ -731,6 +734,8 @@ app.post('/api/rooms', (req: Request, res: Response) => {
     calculatorEnabled: calculatorEnabled !== false,
     startAt: startAt || '',
     endAt: endAt || '',
+    availabilityEnabled: availabilityEnabled !== undefined ? Boolean(availabilityEnabled) : Boolean(startAt || endAt),
+    visitsCount: 0,
     active: active !== false,
     createdAt: Date.now(),
     createdBy: String(req.body.createdBy || 'proctor').trim(),
@@ -763,6 +768,8 @@ app.put('/api/rooms/:id', (req: Request, res: Response) => {
     calculatorEnabled,
     startAt,
     endAt,
+    availabilityEnabled,
+    visitsCount,
     active
   } = req.body;
 
@@ -792,6 +799,8 @@ app.put('/api/rooms/:id', (req: Request, res: Response) => {
     if (calculatorEnabled !== undefined) existing.calculatorEnabled = Boolean(calculatorEnabled);
     if (startAt !== undefined) existing.startAt = startAt;
     if (endAt !== undefined) existing.endAt = endAt;
+    if (availabilityEnabled !== undefined) existing.availabilityEnabled = Boolean(availabilityEnabled);
+    if (visitsCount !== undefined) existing.visitsCount = Number(visitsCount);
     if (active !== undefined) existing.active = Boolean(active);
 
     targetRoom = existing;
@@ -816,6 +825,8 @@ app.put('/api/rooms/:id', (req: Request, res: Response) => {
       calculatorEnabled: calculatorEnabled !== false,
       startAt: startAt || '',
       endAt: endAt || '',
+      availabilityEnabled: availabilityEnabled !== undefined ? Boolean(availabilityEnabled) : Boolean(startAt || endAt),
+      visitsCount: Number(visitsCount) || 0,
       active: active !== false,
       createdAt: Date.now(),
       createdBy: 'admin'
@@ -846,6 +857,24 @@ app.delete('/api/rooms/:id', (req: Request, res: Response) => {
   res.json({ success: true, id });
 });
 
+// Record a room visit (increments visitsCount)
+app.post('/api/rooms/:id/visit', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
+  const { id } = req.params;
+  const room = currentDb.rooms[id];
+  if (!room) {
+    res.status(404).json({ error: 'Room not found' });
+    return;
+  }
+
+  room.visitsCount = (room.visitsCount || 0) + 1;
+  currentDb.rooms[id] = room;
+  db = currentDb;
+  saveDatabase(currentDb);
+  broadcastUpdate('room_updated', room);
+  res.json({ success: true, visitsCount: room.visitsCount });
+});
+
 // Verify Room Entry for examinee (checks roomNumber & passcode typed by student)
 app.post('/api/rooms/verify', (req: Request, res: Response) => {
   const currentDb = getDatabase();
@@ -870,14 +899,21 @@ app.post('/api/rooms/verify', (req: Request, res: Response) => {
   }
 
   const now = Date.now();
-  if (match.startAt && new Date(match.startAt).getTime() > now) {
-    res.status(403).json({ error: 'This examination has not started yet.' });
-    return;
-  }
+  const availabilityEnabled = match.availabilityEnabled !== false;
+  if (availabilityEnabled) {
+    if (match.startAt && new Date(match.startAt).getTime() > now) {
+      res.status(403).json({
+        error: `This examination room is not open yet. It is scheduled to open on ${new Date(match.startAt).toLocaleString()}.`
+      });
+      return;
+    }
 
-  if (match.endAt && new Date(match.endAt).getTime() < now) {
-    res.status(403).json({ error: 'This examination period has ended.' });
-    return;
+    if (match.endAt && new Date(match.endAt).getTime() < now) {
+      res.status(403).json({
+        error: `This examination room has closed. The availability window ended on ${new Date(match.endAt).toLocaleString()}.`
+      });
+      return;
+    }
   }
 
   res.json({
@@ -956,6 +992,54 @@ app.put('/api/attempts/:id', (req: Request, res: Response) => {
   res.json(attempt);
 });
 
+// Delete Single Attempt
+app.delete('/api/attempts/:id', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
+  const { id } = req.params;
+  if (!currentDb.attempts[id]) {
+    res.status(404).json({ error: 'Attempt not found' });
+    return;
+  }
+  delete currentDb.attempts[id];
+  db = currentDb;
+  saveDatabase(currentDb);
+  broadcastUpdate('attempt_deleted', { id });
+  res.json({ success: true, id });
+});
+
+// Delete Multiple or All Attempts
+app.delete('/api/attempts', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
+  const { ids, all } = req.body || {};
+
+  if (all === true) {
+    const count = Object.keys(currentDb.attempts).length;
+    currentDb.attempts = {};
+    db = currentDb;
+    saveDatabase(currentDb);
+    broadcastUpdate('attempts_cleared', { count });
+    res.json({ success: true, message: 'All examinee attempts cleared', deletedCount: count });
+    return;
+  }
+
+  if (Array.isArray(ids) && ids.length > 0) {
+    let deletedCount = 0;
+    for (const id of ids) {
+      if (currentDb.attempts[id]) {
+        delete currentDb.attempts[id];
+        deletedCount++;
+      }
+    }
+    db = currentDb;
+    saveDatabase(currentDb);
+    broadcastUpdate('attempts_bulk_deleted', { ids });
+    res.json({ success: true, deletedCount });
+    return;
+  }
+
+  res.status(400).json({ error: 'Please specify "ids" array or "all: true" in request body.' });
+});
+
 // ---------------------------------------------------------------
 // SECURITY VIOLATIONS (ANTI-CHEAT AUDIT LOG)
 // ---------------------------------------------------------------
@@ -1010,6 +1094,54 @@ app.post('/api/violations', (req: Request, res: Response) => {
   saveDatabase(currentDb);
   broadcastUpdate('violation_logged', { violation: newViolation, attempt, ejected: isFlagged });
   res.status(201).json({ violation: newViolation, attempt, ejected: isFlagged });
+});
+
+// Delete Single Violation
+app.delete('/api/violations/:id', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
+  const { id } = req.params;
+  if (!currentDb.violations[id]) {
+    res.status(404).json({ error: 'Violation event not found' });
+    return;
+  }
+  delete currentDb.violations[id];
+  db = currentDb;
+  saveDatabase(currentDb);
+  broadcastUpdate('violation_deleted', { id });
+  res.json({ success: true, id });
+});
+
+// Delete Multiple or All Violations
+app.delete('/api/violations', (req: Request, res: Response) => {
+  const currentDb = getDatabase();
+  const { ids, all } = req.body || {};
+
+  if (all === true) {
+    const count = Object.keys(currentDb.violations).length;
+    currentDb.violations = {};
+    db = currentDb;
+    saveDatabase(currentDb);
+    broadcastUpdate('violations_cleared', { count });
+    res.json({ success: true, message: 'All security violations cleared', deletedCount: count });
+    return;
+  }
+
+  if (Array.isArray(ids) && ids.length > 0) {
+    let deletedCount = 0;
+    for (const id of ids) {
+      if (currentDb.violations[id]) {
+        delete currentDb.violations[id];
+        deletedCount++;
+      }
+    }
+    db = currentDb;
+    saveDatabase(currentDb);
+    broadcastUpdate('violations_bulk_deleted', { ids });
+    res.json({ success: true, deletedCount });
+    return;
+  }
+
+  res.status(400).json({ error: 'Please specify "ids" array or "all: true" in request body.' });
 });
 
 // ---------------------------------------------------------------
@@ -1072,14 +1204,43 @@ async function fetchGoogleSheetCSV(sheetUrl: string): Promise<{ headers: string[
   if (!sheetUrl || !sheetUrl.trim()) {
     return { headers: [], rows: [] };
   }
-  let exportUrl = sheetUrl.trim();
-  const match = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  if (match && match[1]) {
-    exportUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
+  const cleanUrl = sheetUrl.trim();
+  let exportUrl = cleanUrl;
+
+  // Extract gid if present
+  let gid: string | null = null;
+  const gidMatch = cleanUrl.match(/[?&#]gid=([0-9]+)/);
+  if (gidMatch && gidMatch[1]) {
+    gid = gidMatch[1];
   }
-  const response = await fetch(exportUrl);
+
+  // Check if it's already a direct CSV export link
+  if (cleanUrl.includes('/export?format=csv') || cleanUrl.includes('/pub?output=csv')) {
+    exportUrl = cleanUrl;
+  } else {
+    // Check if published web URL: /spreadsheets/d/e/2PACX-.../pubhtml or /pub
+    const pubMatch = cleanUrl.match(/\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/);
+    if (pubMatch && pubMatch[1]) {
+      exportUrl = `https://docs.google.com/spreadsheets/d/e/${pubMatch[1]}/pub?output=csv${gid ? `&gid=${gid}` : ''}`;
+    } else {
+      // Standard sheet URL: /spreadsheets/d/([a-zA-Z0-9-_]+)
+      const docMatch = cleanUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (docMatch && docMatch[1] && docMatch[1] !== 'e') {
+        exportUrl = `https://docs.google.com/spreadsheets/d/${docMatch[1]}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+      }
+    }
+  }
+
+  const response = await fetch(exportUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/csv,text/plain,*/*'
+    },
+    redirect: 'follow'
+  });
+
   if (!response.ok) {
-    throw new Error(`Failed to fetch Google Sheet: ${response.status} ${response.statusText}`);
+    throw new Error(`Failed to fetch Google Sheet: ${response.status} ${response.statusText}. Please verify the sheet is shared as "Anyone with the link can view".`);
   }
   const csvText = await response.text();
   const parsed = parseCSV(csvText);

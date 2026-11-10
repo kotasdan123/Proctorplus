@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ExamRoom, ExamAttempt, ParticipantSession } from '../types';
-import { Clock, ShieldCheck, Users, LogOut, ArrowRight, Play, CheckCircle2, AlertCircle, Calculator } from 'lucide-react';
+import { Clock, ShieldCheck, Users, LogOut, ArrowRight, Play, CheckCircle2, AlertCircle, Calculator, Calendar } from 'lucide-react';
+import { checkRoomAvailability } from '../lib/api';
 
 interface ParticipantRoomDashboardProps {
   room: ExamRoom;
@@ -18,6 +19,7 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
   onLogout
 }) => {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const availability = checkRoomAvailability(room);
 
   const ownAttempts = attempts.filter(
     (a) => a.examId === room.id && a.participantId === session.participantId
@@ -159,20 +161,37 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
         {/* Start Action Panel */}
         <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-base font-bold text-white mb-1">
-              Ready to Begin Your Examination?
-            </h3>
-            <p className="text-xs text-slate-400 max-w-md">
-              The Google Form will open inside a full-screen lockdown interface with countdown timer and proctoring.
-            </p>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-base font-bold text-white">
+                Ready to Begin Your Examination?
+              </h3>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                availability.available
+                  ? 'bg-emerald-950/70 border-emerald-800 text-emerald-400'
+                  : 'bg-amber-950/70 border-amber-800 text-amber-300'
+              }`}>
+                {availability.status.toUpperCase()}
+              </span>
+            </div>
+            {availability.available ? (
+              <p className="text-xs text-slate-400 max-w-md">
+                The Google Form will open inside a full-screen lockdown interface with countdown timer and proctoring.
+              </p>
+            ) : (
+              <p className="text-xs text-amber-300/90 max-w-md flex items-center gap-1.5 mt-0.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                <span>{availability.reason}</span>
+              </p>
+            )}
           </div>
           <button
             type="button"
+            disabled={!availability.available}
             onClick={() => setInstructionsOpen(true)}
-            className="px-6 py-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 rounded-2xl text-white font-bold text-sm shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 flex-shrink-0 transition-all hover:scale-[1.02]"
+            className="px-6 py-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-2xl text-white font-bold text-sm shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 flex-shrink-0 transition-all hover:scale-[1.02]"
           >
             <Play className="w-4 h-4 fill-white" />
-            <span>Start Examination</span>
+            <span>{availability.available ? 'Start Examination' : 'Examination Unavailable'}</span>
           </button>
         </div>
 

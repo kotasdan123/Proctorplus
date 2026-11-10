@@ -11,6 +11,8 @@ export interface ExamRoom {
   durationMinutes: number;
   startAt?: string;
   endAt?: string;
+  availabilityEnabled?: boolean;
+  visitsCount?: number;
   active: boolean;
   calculatorEnabled?: boolean;
   createdAt: number;

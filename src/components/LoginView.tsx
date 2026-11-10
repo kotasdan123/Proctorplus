@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Shield, KeyRound, User, ArrowRight, Server, Flame, CheckCircle2, Lock, Users, Laptop } from 'lucide-react';
-import { verifyRoom } from '../lib/api';
+import { verifyRoom, recordRoomVisit } from '../lib/api';
 import { ExamRoom, ParticipantSession } from '../types';
 import { LoadingScreen } from './LoadingScreen';
 
@@ -41,6 +41,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
     try {
       const res = await verifyRoom(cleanRoom, cleanPass);
       if (res.success && res.room) {
+        // Record visit for room analytics
+        recordRoomVisit(res.room.id).catch(() => {});
+
         const participantId = `EXM-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
         const session: ParticipantSession = {
           role: 'room',

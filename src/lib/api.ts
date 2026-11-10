@@ -534,8 +534,11 @@ export function subscribeToRooms(
             maxViolations: Number(data.maxViolations) || 5,
             timerEnabled: Boolean(data.timerEnabled),
             durationMinutes: Number(data.durationMinutes) || 60,
+            calculatorEnabled: data.calculatorEnabled !== false,
             startAt: data.startAt || '',
             endAt: data.endAt || '',
+            availabilityEnabled: data.availabilityEnabled !== undefined ? Boolean(data.availabilityEnabled) : Boolean(data.startAt || data.endAt),
+            visitsCount: Number(data.visitsCount) || 0,
             active: data.active !== false,
             createdAt: Number(data.createdAt) || 0,
             createdBy: data.createdBy || 'proctor',
@@ -593,6 +596,8 @@ export async function fetchRooms(): Promise<ExamRoom[]> {
         calculatorEnabled: data.calculatorEnabled !== false,
         startAt: data.startAt || '',
         endAt: data.endAt || '',
+        availabilityEnabled: data.availabilityEnabled !== undefined ? Boolean(data.availabilityEnabled) : Boolean(data.startAt || data.endAt),
+        visitsCount: Number(data.visitsCount) || 0,
         active: data.active !== false,
         createdAt: Number(data.createdAt) || 0,
         createdBy: data.createdBy || 'proctor',
@@ -637,6 +642,8 @@ export async function createRoom(room: Partial<ExamRoom>): Promise<ExamRoom> {
     calculatorEnabled: room.calculatorEnabled !== false,
     startAt: room.startAt || '',
     endAt: room.endAt || '',
+    availabilityEnabled: room.availabilityEnabled !== undefined ? Boolean(room.availabilityEnabled) : Boolean(room.startAt || room.endAt),
+    visitsCount: 0,
     active: room.active !== false,
     createdAt: Date.now(),
     createdBy: room.createdBy || 'proctor',
@@ -707,8 +714,97 @@ export async function deleteRoom(id: string): Promise<{ success: boolean; id: st
 }
 
 /**
+ * Check whether a room is currently open, upcoming, or expired based on scheduled availability.
+ */
+export function checkRoomAvailability(room: ExamRoom): {
+  available: boolean;
+  status: 'Open' | 'Upcoming' | 'Expired' | 'Closed';
+  reason?: string;
+} {
+  if (!room.active) {
+    return {
+      available: false,
+      status: 'Closed',
+      reason: `Examination room "${room.title}" (${room.roomNumber}) is currently closed by the administrator.`
+    };
+  }
+
+  // If availability option is disabled, the room is accessible anytime
+  const availabilityEnabled = room.availabilityEnabled !== false && Boolean(room.startAt || room.endAt);
+  if (!availabilityEnabled) {
+    return { available: true, status: 'Open' };
+  }
+
+  const now = Date.now();
+  if (room.startAt) {
+    const startMs = new Date(room.startAt).getTime();
+    if (!isNaN(startMs) && now < startMs) {
+      return {
+        available: false,
+        status: 'Upcoming',
+        reason: `Examination room "${room.title}" (${room.roomNumber}) is not open yet. It is scheduled to become available on ${new Date(startMs).toLocaleString()}.`
+      };
+    }
+  }
+
+  if (room.endAt) {
+    const endMs = new Date(room.endAt).getTime();
+    if (!isNaN(endMs) && now > endMs) {
+      return {
+        available: false,
+        status: 'Expired',
+        reason: `Examination room "${room.title}" (${room.roomNumber}) has closed. The scheduled availability window ended on ${new Date(endMs).toLocaleString()}.`
+      };
+    }
+  }
+
+  return { available: true, status: 'Open' };
+}
+
+/**
+ * Record an examinee visit/entry into an examination room.
+ */
+export async function recordRoomVisit(roomId: string): Promise<number> {
+  let count = 0;
+  // 1. Update in Firestore
+  try {
+    const roomRef = doc(db, 'rooms', roomId);
+    const snap = await getDoc(roomRef);
+    if (snap.exists()) {
+      const prev = Number(snap.data()?.visitsCount) || 0;
+      count = prev + 1;
+      await updateDoc(roomRef, { visitsCount: count });
+    }
+  } catch (err) {
+    console.warn('Firestore visit increment notice:', err);
+  }
+
+  // 2. Also notify backend server
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/rooms/${roomId}/visit`, {
+      method: 'POST',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.visitsCount === 'number') count = data.visitsCount;
+    }
+  } catch {
+    // Ignore offline
+  }
+
+  // 3. Update local cache
+  const rooms = getLocalRooms();
+  const updated = rooms.map(r => r.id === roomId ? { ...r, visitsCount: count || (r.visitsCount || 0) + 1 } : r);
+  saveLocalRooms(updated);
+
+  return count;
+}
+
+/**
  * Verify candidate room number & passcode against authoritative Firestore.
  * Does NOT silently fabricate fallback rooms if Firestore fails.
+ * Strictly enforces date/time availability windows.
  */
 export async function verifyRoom(roomNumber: string, passcode: string): Promise<{
   success: boolean;
@@ -741,8 +837,10 @@ export async function verifyRoom(roomNumber: string, passcode: string): Promise<
     throw new Error(`Invalid Room Number "${roomNumber}" or Passcode. Please verify your credentials and try again.`);
   }
 
-  if (!match.active) {
-    throw new Error(`Examination room "${match.title}" (${match.roomNumber}) is currently closed by the administrator.`);
+  // Check room availability (active state + date/time window)
+  const availability = checkRoomAvailability(match);
+  if (!availability.available) {
+    throw new Error(availability.reason || 'This examination room is currently not accessible.');
   }
 
   return { success: true, room: match };
@@ -834,6 +932,83 @@ export async function updateAttempt(id: string, payload: Partial<ExamAttempt>): 
   return updated;
 }
 
+export async function deleteAttempt(id: string): Promise<void> {
+  // 1. Delete from Firestore
+  try {
+    await deleteDoc(doc(db, 'attempts', id));
+  } catch (err) {
+    console.warn('Firestore deleteAttempt notice:', err);
+  }
+
+  // 2. Delete from backend server
+  try {
+    await fetch(`${getBaseUrl()}/api/attempts/${id}`, {
+      method: 'DELETE',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+  } catch {
+    // Offline
+  }
+
+  // 3. Update local cache
+  const current = getLocalAttempts().filter((a) => a.id !== id);
+  saveLocalAttempts(current);
+}
+
+export async function deleteMultipleAttempts(ids: string[]): Promise<void> {
+  const set = new Set(ids);
+  // 1. Delete from Firestore
+  for (const id of ids) {
+    try {
+      await deleteDoc(doc(db, 'attempts', id));
+    } catch {
+      // Continue
+    }
+  }
+
+  // 2. Delete from backend server
+  try {
+    await fetch(`${getBaseUrl()}/api/attempts`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify({ ids })
+    });
+  } catch {
+    // Offline
+  }
+
+  // 3. Update local cache
+  const current = getLocalAttempts().filter((a) => !set.has(a.id));
+  saveLocalAttempts(current);
+}
+
+export async function deleteAllAttempts(): Promise<void> {
+  // 1. Delete all from Firestore
+  try {
+    const attemptsCol = collection(db, 'attempts');
+    const snap = await getDocs(attemptsCol);
+    for (const d of snap.docs) {
+      await deleteDoc(d.ref);
+    }
+  } catch (err) {
+    console.warn('Firestore deleteAllAttempts notice:', err);
+  }
+
+  // 2. Delete all from backend server
+  try {
+    await fetch(`${getBaseUrl()}/api/attempts`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify({ all: true })
+    });
+  } catch {
+    // Offline
+  }
+
+  // 3. Update local cache
+  saveLocalAttempts([]);
+}
+
 // ---------------------------------------------------------------
 // SECURITY VIOLATIONS
 // ---------------------------------------------------------------
@@ -910,6 +1085,83 @@ export async function recordViolation(attemptId: string, reason: string): Promis
   return { violation: newViolation, attempt: attempt! };
 }
 
+export async function deleteViolation(id: string): Promise<void> {
+  // 1. Delete from Firestore
+  try {
+    await deleteDoc(doc(db, 'violations', id));
+  } catch (err) {
+    console.warn('Firestore deleteViolation notice:', err);
+  }
+
+  // 2. Delete from backend server
+  try {
+    await fetch(`${getBaseUrl()}/api/violations/${id}`, {
+      method: 'DELETE',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+  } catch {
+    // Offline
+  }
+
+  // 3. Update local cache
+  const current = getLocalViolations().filter((v) => v.id !== id);
+  saveLocalViolations(current);
+}
+
+export async function deleteMultipleViolations(ids: string[]): Promise<void> {
+  const set = new Set(ids);
+  // 1. Delete from Firestore
+  for (const id of ids) {
+    try {
+      await deleteDoc(doc(db, 'violations', id));
+    } catch {
+      // Continue
+    }
+  }
+
+  // 2. Delete from backend server
+  try {
+    await fetch(`${getBaseUrl()}/api/violations`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify({ ids })
+    });
+  } catch {
+    // Offline
+  }
+
+  // 3. Update local cache
+  const current = getLocalViolations().filter((v) => !set.has(v.id));
+  saveLocalViolations(current);
+}
+
+export async function deleteAllViolations(): Promise<void> {
+  // 1. Delete all from Firestore
+  try {
+    const violationsCol = collection(db, 'violations');
+    const snap = await getDocs(violationsCol);
+    for (const d of snap.docs) {
+      await deleteDoc(d.ref);
+    }
+  } catch (err) {
+    console.warn('Firestore deleteAllViolations notice:', err);
+  }
+
+  // 2. Delete all from backend server
+  try {
+    await fetch(`${getBaseUrl()}/api/violations`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      body: JSON.stringify({ all: true })
+    });
+  } catch {
+    // Offline
+  }
+
+  // 3. Update local cache
+  saveLocalViolations([]);
+}
+
 // ---------------------------------------------------------------
 // REAL-TIME SYNC VIA GOOGLE CLOUD FIRESTORE + SSE
 // ---------------------------------------------------------------
@@ -943,6 +1195,8 @@ export function subscribeToEvents(
             calculatorEnabled: data.calculatorEnabled !== false,
             startAt: data.startAt || '',
             endAt: data.endAt || '',
+            availabilityEnabled: data.availabilityEnabled !== undefined ? Boolean(data.availabilityEnabled) : Boolean(data.startAt || data.endAt),
+            visitsCount: Number(data.visitsCount) || 0,
             active: data.active !== false,
             createdAt: Number(data.createdAt) || 0,
             createdBy: data.createdBy || 'proctor',
@@ -1070,7 +1324,96 @@ export async function fetchSheetData(force = false): Promise<SheetData> {
   return getLocalSheet();
 }
 
+function parseBrowserCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && nextChar === '"') {
+        currentCell += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        currentCell += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        currentRow.push(currentCell.trim());
+        currentCell = '';
+      } else if (char === '\r') {
+        if (nextChar === '\n') i++;
+        currentRow.push(currentCell.trim());
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+      } else if (char === '\n') {
+        currentRow.push(currentCell.trim());
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+      } else {
+        currentCell += char;
+      }
+    }
+  }
+
+  if (currentCell.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentCell.trim());
+    rows.push(currentRow);
+  }
+
+  return rows.filter((r) => r.some((c) => c !== ''));
+}
+
+async function fetchDirectClientCSV(rawUrl: string): Promise<SheetData | null> {
+  let exportUrl = rawUrl.trim();
+  let gid: string | null = null;
+  const gidMatch = exportUrl.match(/[?&#]gid=([0-9]+)/);
+  if (gidMatch && gidMatch[1]) gid = gidMatch[1];
+
+  if (!exportUrl.includes('/export?format=csv') && !exportUrl.includes('/pub?output=csv')) {
+    const pubMatch = exportUrl.match(/\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/);
+    if (pubMatch && pubMatch[1]) {
+      exportUrl = `https://docs.google.com/spreadsheets/d/e/${pubMatch[1]}/pub?output=csv${gid ? `&gid=${gid}` : ''}`;
+    } else {
+      const docMatch = exportUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (docMatch && docMatch[1] && docMatch[1] !== 'e') {
+        exportUrl = `https://docs.google.com/spreadsheets/d/${docMatch[1]}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+      }
+    }
+  }
+
+  try {
+    const res = await fetch(exportUrl);
+    if (res.ok) {
+      const text = await res.text();
+      const parsed = parseBrowserCSV(text);
+      if (parsed.length > 0) {
+        return {
+          url: rawUrl,
+          lastSyncedAt: Date.now(),
+          headers: parsed[0] || [],
+          rows: parsed.slice(1)
+        };
+      }
+    }
+  } catch {
+    // CORS or network error on direct client fetch
+  }
+  return null;
+}
+
 export async function syncSheetData(url?: string): Promise<SheetData> {
+  let serverError: string | null = null;
   try {
     const res = await fetch(`${getBaseUrl()}/api/sheet/sync`, {
       method: 'POST',
@@ -1081,15 +1424,32 @@ export async function syncSheetData(url?: string): Promise<SheetData> {
       const data = await res.json();
       saveLocalSheet(data.sheetData);
       return data.sheetData;
+    } else {
+      const errData = await res.json().catch(() => null);
+      serverError = errData?.error || `Server returned HTTP ${res.status}`;
     }
-  } catch {
-    // Fallback
+  } catch (err: any) {
+    serverError = err.message || 'Server connection failed';
   }
-  const current = getLocalSheet();
-  if (url) current.url = url;
-  current.lastSyncedAt = Date.now();
-  saveLocalSheet(current);
-  return current;
+
+  // Client-side direct fallback if backend fetch failed
+  const targetUrl = url || getLocalSheet().url;
+  if (targetUrl) {
+    const clientData = await fetchDirectClientCSV(targetUrl);
+    if (clientData) {
+      saveLocalSheet(clientData);
+      saveSheetData(clientData).catch(() => {});
+      return clientData;
+    }
+  }
+
+  if (serverError) {
+    throw new Error(
+      `Could not sync with Google Sheet: ${serverError}. Please check that the link is correct and the Google Sheet share setting is set to "Anyone with the link can view".`
+    );
+  }
+
+  throw new Error('Could not connect to Google Sheet. Please check the URL and permissions.');
 }
 
 export async function saveSheetData(payload: { headers?: string[]; rows: string[][]; url?: string }): Promise<SheetData> {

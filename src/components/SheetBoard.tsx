@@ -59,6 +59,8 @@ export const SheetBoard: React.FC = () => {
 
   // Active view: 'board' (interactive table) or 'embed' (google sheet iframe)
   const [activeTab, setActiveTab] = useState<'board' | 'embed'>('board');
+  const [embedMode, setEmbedMode] = useState<'preview' | 'pubhtml' | 'edit'>('preview');
+  const [embedKey, setEmbedKey] = useState<number>(1);
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -318,11 +320,72 @@ export const SheetBoard: React.FC = () => {
     return new Set(emails).size;
   }, [localRows]);
 
-  const sheetId = useMemo(() => {
-    if (!sheetData.url) return null;
-    const match = sheetData.url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    return match ? match[1] : null;
+  const sheetMeta = useMemo(() => {
+    const raw = (sheetData.url || '').trim();
+    if (!raw) return null;
+
+    let gid: string | null = null;
+    const gidMatch = raw.match(/[?&#]gid=([0-9]+)/);
+    if (gidMatch && gidMatch[1]) gid = gidMatch[1];
+
+    // Check published web link: /spreadsheets/d/e/([a-zA-Z0-9-_]+)
+    const pubMatch = raw.match(/\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/);
+    if (pubMatch && pubMatch[1]) {
+      return {
+        type: 'published' as const,
+        id: pubMatch[1],
+        gid,
+        rawUrl: raw
+      };
+    }
+
+    // Standard sheet link: /spreadsheets/d/([a-zA-Z0-9-_]+) (where id is not 'e')
+    const docMatch = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (docMatch && docMatch[1] && docMatch[1] !== 'e') {
+      return {
+        type: 'standard' as const,
+        id: docMatch[1],
+        gid,
+        rawUrl: raw
+      };
+    }
+
+    return {
+      type: 'raw' as const,
+      id: null,
+      gid,
+      rawUrl: raw
+    };
   }, [sheetData.url]);
+
+  const iframeSrc = useMemo(() => {
+    if (!sheetMeta) return null;
+
+    if (sheetMeta.type === 'published') {
+      return `https://docs.google.com/spreadsheets/d/e/${sheetMeta.id}/pubhtml${
+        sheetMeta.gid ? `?gid=${sheetMeta.gid}&single=true` : '?widget=true&headers=false'
+      }`;
+    }
+
+    if (sheetMeta.type === 'standard') {
+      if (embedMode === 'preview') {
+        return `https://docs.google.com/spreadsheets/d/${sheetMeta.id}/preview${
+          sheetMeta.gid ? `?gid=${sheetMeta.gid}` : ''
+        }`;
+      }
+      if (embedMode === 'pubhtml') {
+        return `https://docs.google.com/spreadsheets/d/${sheetMeta.id}/pubhtml${
+          sheetMeta.gid ? `?gid=${sheetMeta.gid}` : ''
+        }`;
+      }
+      // 'edit' mode: embedded editor widget
+      return `https://docs.google.com/spreadsheets/d/${sheetMeta.id}/edit?rm=embedded${
+        sheetMeta.gid ? `&gid=${sheetMeta.gid}` : ''
+      }`;
+    }
+
+    return sheetMeta.rawUrl;
+  }, [sheetMeta, embedMode]);
 
   return (
     <div className="space-y-6">
@@ -976,40 +1039,114 @@ export const SheetBoard: React.FC = () => {
          ========================================================= */}
       {activeTab === 'embed' && (
         <div className="space-y-4">
-          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs">
             <div className="space-y-1">
               <div className="font-bold text-white flex items-center gap-2">
                 <span>Embedded Google Spreadsheet</span>
-                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">
-                  Direct Sync
+                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
+                  {sheetMeta?.type === 'published' ? 'Published Web' : 'Google Docs Embed'}
                 </span>
               </div>
               <p className="text-slate-400">
-                Live Google Docs spreadsheet editor. To enable direct editing here, ensure your Google account has editor permissions.
+                Live interactive Google Sheet view. Switch embed mode below if your browser blocks specific Google frame headers.
               </p>
             </div>
 
-            {sheetData.url && (
-              <a
-                href={sheetData.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold transition-colors flex-shrink-0"
-              >
-                <ExternalLink className="w-4 h-4" />
-                <span>Open in Full Browser Tab</span>
-              </a>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Embed Mode Selector */}
+              <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEmbedMode('preview')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    embedMode === 'preview'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Interactive Google Sheet Preview (Highest compatibility, avoids SAMEORIGIN blocks)"
+                >
+                  Preview Mode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmbedMode('pubhtml')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    embedMode === 'pubhtml'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Published Web View (Formatted HTML table)"
+                >
+                  Published Web
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmbedMode('edit')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    embedMode === 'edit'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Edit Widget (Requires Google account sign-in and third-party cookies enabled)"
+                >
+                  Edit Frame
+                </button>
+              </div>
+
+              {/* Refresh Frame Button */}
+              {iframeSrc && (
+                <button
+                  type="button"
+                  onClick={() => setEmbedKey((k) => k + 1)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors text-xs font-semibold"
+                  title="Reload Google Sheet iframe"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Reload</span>
+                </button>
+              )}
+
+              {sheetData.url && (
+                <a
+                  href={sheetData.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold transition-colors flex-shrink-0 shadow-md shadow-emerald-600/20"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open in Google Sheets</span>
+                </a>
+              )}
+            </div>
           </div>
 
-          {sheetId ? (
-            <div className="w-full h-[750px] rounded-3xl border border-slate-800 overflow-hidden bg-slate-950 shadow-2xl relative">
-              <iframe
-                src={`https://docs.google.com/spreadsheets/d/${sheetId}/edit?widget=true&headers=false`}
-                className="w-full h-full border-0"
-                title="Google Sheet Embedded Data Board"
-                allowFullScreen
-              />
+          {/* Iframe Container & Fallback Card */}
+          {iframeSrc ? (
+            <div className="space-y-3">
+              <div className="w-full h-[750px] rounded-3xl border border-slate-800 overflow-hidden bg-slate-950 shadow-2xl relative">
+                <iframe
+                  key={embedKey}
+                  src={iframeSrc}
+                  className="w-full h-full border-0"
+                  title="Google Sheet Embedded Live View"
+                  allowFullScreen
+                  loading="lazy"
+                />
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-400">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    <strong>Frame Notice:</strong> If Google displays a blank page or <em>"refused to connect"</em>, switch to <strong>Preview Mode</strong> above or click <strong>Open in Google Sheets</strong>.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 font-mono text-[11px] text-slate-500 shrink-0">
+                  <span>Mode: {embedMode.toUpperCase()}</span>
+                  <span>•</span>
+                  <span>GID: {sheetMeta?.gid || '0'}</span>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="p-16 rounded-3xl border border-slate-800 bg-slate-900/60 text-center space-y-4 shadow-xl">

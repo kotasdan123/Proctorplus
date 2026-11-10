@@ -34,13 +34,23 @@ import {
   KeyRound,
   Table,
   AlertTriangle,
-  Calculator
+  Calculator,
+  Calendar
 } from 'lucide-react';
 import { RoomModal } from './RoomModal';
 import { FirebaseConfigModal } from './FirebaseConfigModal';
 import { SheetBoard } from './SheetBoard';
 import { LoadingScreen } from './LoadingScreen';
-import { updateAdminCredentials, resetAllToDefault } from '../lib/api';
+import {
+  updateAdminCredentials,
+  resetAllToDefault,
+  deleteAttempt,
+  deleteMultipleAttempts,
+  deleteAllAttempts,
+  deleteViolation,
+  deleteMultipleViolations,
+  deleteAllViolations
+} from '../lib/api';
 
 interface AdminPortalProps {
   adminSession: AdminSession;
@@ -86,6 +96,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [resetConfirmInput, setResetConfirmInput] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
+
+  // Submissions & Violations Selection & Deletion state
+  const [selectedAttemptIds, setSelectedAttemptIds] = useState<Set<string>>(new Set());
+  const [selectedViolationIds, setSelectedViolationIds] = useState<Set<string>>(new Set());
+  const [deleteAttemptsModalOpen, setDeleteAttemptsModalOpen] = useState(false);
+  const [deleteViolationsModalOpen, setDeleteViolationsModalOpen] = useState(false);
+  const [deleteActionLoading, setDeleteActionLoading] = useState(false);
+  const [portalToast, setPortalToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setPortalToast(msg);
+    setTimeout(() => setPortalToast(null), 4000);
+  };
 
   const handleNavigateTab = (
     target: 'dashboard' | 'rooms' | 'submissions' | 'violations' | 'analytics' | 'settings' | 'sheet',
@@ -182,13 +205,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // Live Progress Calculation: Filter out stale or abandoned attempts
+  const isTrulyLive = (a: ExamAttempt) => {
+    if (a.status !== 'In Progress') return false;
+    const room = rooms.find((r) => r.id === a.examId);
+    const durationMs = ((room?.durationMinutes || 60) + 15) * 60 * 1000;
+    return Date.now() - a.startedAt <= durationMs;
+  };
+
   // Metrics
   const activeRooms = rooms.filter((r) => r.active).length;
-  const liveSessions = attempts.filter((a) => a.status === 'In Progress').length;
+  const liveSessions = attempts.filter(isTrulyLive).length;
   const completedSessions = attempts.filter((a) => a.status === 'Completed').length;
-  const expiredSessions = attempts.filter((a) => a.status === 'Time Expired').length;
+  const expiredSessions = attempts.filter((a) => a.status === 'Time Expired' || (a.status === 'In Progress' && !isTrulyLive(a))).length;
   const uniqueExaminees = new Set(attempts.map((a) => a.participantId)).size;
   const completionRate = attempts.length > 0 ? Math.round((completedSessions / attempts.length) * 100) : 0;
+  const totalRoomVisits = rooms.reduce((sum, r) => sum + (r.visitsCount || 0), 0);
 
   const formatDuration = (seconds?: number) => {
     if (seconds === undefined) return '—';
@@ -200,6 +232,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   const getAvailability = (room: ExamRoom) => {
     if (!room.active) return { status: 'Closed', color: 'text-slate-400 bg-slate-800' };
+    if (room.availabilityEnabled === false || (!room.startAt && !room.endAt)) {
+      return { status: 'Open Anytime', color: 'text-emerald-400 bg-emerald-950/60' };
+    }
     const now = Date.now();
     if (room.startAt && new Date(room.startAt).getTime() > now) {
       return { status: 'Upcoming', color: 'text-blue-400 bg-blue-950/60' };
@@ -783,7 +818,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         </div>
 
                         {/* Metrics Bar */}
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-800/80 text-center">
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-2 border-t border-slate-800/80 text-center">
+                          <div className="p-2 bg-slate-950/50 rounded-xl border border-blue-500/20 bg-blue-950/20">
+                            <span className="text-[9px] text-blue-400 uppercase block font-bold">Visits</span>
+                            <strong className="text-xs text-blue-300 font-mono font-bold">{room.visitsCount || 0}</strong>
+                          </div>
                           <div className="p-2 bg-slate-950/50 rounded-xl">
                             <span className="text-[9px] text-slate-400 uppercase block">Timer</span>
                             <strong className="text-xs text-white">
@@ -880,6 +919,45 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     Every participant session is logged independently with start time, duration, and proctor flags.
                   </p>
                 </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {selectedAttemptIds.size > 0 && (
+                    <button
+                      type="button"
+                      disabled={deleteActionLoading}
+                      onClick={async () => {
+                        if (window.confirm(`Delete ${selectedAttemptIds.size} selected examinee submission(s)?`)) {
+                          setDeleteActionLoading(true);
+                          try {
+                            await deleteMultipleAttempts(Array.from(selectedAttemptIds));
+                            setSelectedAttemptIds(new Set());
+                            showToast(`Deleted ${selectedAttemptIds.size} submission(s).`);
+                          } catch (err: any) {
+                            alert(`Failed to delete submissions: ${err.message}`);
+                          } finally {
+                            setDeleteActionLoading(false);
+                          }
+                        }
+                      }}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold bg-red-950/70 hover:bg-red-900 border border-red-800 text-red-200 flex items-center gap-1.5 transition-colors shadow-sm"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      <span>Delete Selected ({selectedAttemptIds.size})</span>
+                    </button>
+                  )}
+
+                  {attempts.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={deleteActionLoading}
+                      onClick={() => setDeleteAttemptsModalOpen(true)}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-red-950/60 border border-slate-700 hover:border-red-800 text-slate-300 hover:text-red-300 flex items-center gap-1.5 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      <span>Delete All Submissions</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Filters Bar */}
@@ -912,95 +990,165 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               {/* Submissions Table */}
               <div className="rounded-3xl bg-slate-900 border border-slate-800 overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead className="text-slate-400 bg-slate-950/60 border-b border-slate-800 uppercase tracking-wider text-[10px]">
-                      <tr>
-                        <th className="py-3 px-4">Participant</th>
-                        <th className="py-3 px-4">Room</th>
-                        <th className="py-3 px-4">Examination</th>
-                        <th className="py-3 px-4">Started At</th>
-                        <th className="py-3 px-4">Ended At</th>
-                        <th className="py-3 px-4">Duration</th>
-                        <th className="py-3 px-4">Status</th>
-                        <th className="py-3 px-4">Violations</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60">
-                      {attempts
-                        .filter((a) => {
-                          if (statusFilter !== 'ALL' && a.status !== statusFilter) return false;
-                          if (!searchFilter.trim()) return true;
-                          const q = searchFilter.toLowerCase();
-                          return (
-                            a.participantName.toLowerCase().includes(q) ||
-                            a.participantId.toLowerCase().includes(q) ||
-                            a.roomNumber.toLowerCase().includes(q) ||
-                            a.examTitle.toLowerCase().includes(q)
-                          );
-                        })
-                        .map((attempt) => (
-                          <tr key={attempt.id} className="hover:bg-slate-800/30">
-                            <td className="py-3 px-4">
-                              <strong className="text-white block">
-                                {attempt.participantName || attempt.participantId}
-                              </strong>
-                              {attempt.participantName && (
-                                <span className="text-[10px] text-slate-500 font-mono">
-                                  {attempt.participantId}
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 font-mono font-bold text-emerald-300">
-                              {attempt.roomNumber}
-                            </td>
-                            <td className="py-3 px-4 text-slate-300">{attempt.examTitle}</td>
-                            <td className="py-3 px-4 text-slate-400">
-                              {new Date(attempt.startedAt).toLocaleString()}
-                            </td>
-                            <td className="py-3 px-4 text-slate-400">
-                              {attempt.endedAt ? new Date(attempt.endedAt).toLocaleTimeString() : '—'}
-                            </td>
-                            <td className="py-3 px-4 text-slate-300 font-medium">
-                              {formatDuration(attempt.durationSeconds)}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                attempt.status === 'Completed'
-                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                  : attempt.status === 'Terminated'
-                                  ? 'bg-red-500/15 text-red-400 border border-red-500/30'
-                                  : attempt.status === 'Time Expired'
-                                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              }`}>
-                                {attempt.status === 'Terminated' ? 'Ejected / Terminated' : attempt.status}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              {(() => {
-                                const maxV = attempt.maxViolations || rooms.find(r => r.id === attempt.examId)?.maxViolations || 5;
-                                return (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className={`font-bold ${attempt.violations >= maxV ? 'text-red-400 font-black' : attempt.violations > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-                                      {attempt.violations} / {maxV}
-                                    </span>
-                                    {attempt.status === 'Terminated' ? (
-                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
-                                        Ejected
-                                      </span>
-                                    ) : attempt.flagged ? (
-                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
-                                        Review Flag
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                );
-                              })()}
-                            </td>
+                  {(() => {
+                    const filteredAttempts = attempts.filter((a) => {
+                      if (statusFilter !== 'ALL' && a.status !== statusFilter) return false;
+                      if (!searchFilter.trim()) return true;
+                      const q = searchFilter.toLowerCase();
+                      return (
+                        a.participantName.toLowerCase().includes(q) ||
+                        a.participantId.toLowerCase().includes(q) ||
+                        a.roomNumber.toLowerCase().includes(q) ||
+                        a.examTitle.toLowerCase().includes(q)
+                      );
+                    });
+
+                    const allFilteredSelected =
+                      filteredAttempts.length > 0 &&
+                      filteredAttempts.every((a) => selectedAttemptIds.has(a.id));
+
+                    const toggleSelectAll = () => {
+                      if (allFilteredSelected) {
+                        setSelectedAttemptIds(new Set());
+                      } else {
+                        setSelectedAttemptIds(new Set(filteredAttempts.map((a) => a.id)));
+                      }
+                    };
+
+                    const toggleSelect = (id: string) => {
+                      const next = new Set(selectedAttemptIds);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      setSelectedAttemptIds(next);
+                    };
+
+                    if (filteredAttempts.length === 0) {
+                      return (
+                        <div className="p-12 text-center text-xs text-slate-500">
+                          No examinee submissions match your current filter.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <table className="w-full text-xs text-left">
+                        <thead className="text-slate-400 bg-slate-950/60 border-b border-slate-800 uppercase tracking-wider text-[10px]">
+                          <tr>
+                            <th className="py-3 px-3 w-10 text-center">
+                              <input
+                                type="checkbox"
+                                checked={allFilteredSelected}
+                                onChange={toggleSelectAll}
+                                className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                              />
+                            </th>
+                            <th className="py-3 px-4">Participant</th>
+                            <th className="py-3 px-4">Room</th>
+                            <th className="py-3 px-4">Examination</th>
+                            <th className="py-3 px-4">Started At</th>
+                            <th className="py-3 px-4">Ended At</th>
+                            <th className="py-3 px-4">Duration</th>
+                            <th className="py-3 px-4">Status</th>
+                            <th className="py-3 px-4">Violations</th>
+                            <th className="py-3 px-3 text-right">Actions</th>
                           </tr>
-                        ))}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60">
+                          {filteredAttempts.map((attempt) => (
+                            <tr key={attempt.id} className="hover:bg-slate-800/30">
+                              <td className="py-3 px-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedAttemptIds.has(attempt.id)}
+                                  onChange={() => toggleSelect(attempt.id)}
+                                  className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                                />
+                              </td>
+                              <td className="py-3 px-4">
+                                <strong className="text-white block">
+                                  {attempt.participantName || attempt.participantId}
+                                </strong>
+                                {attempt.participantName && (
+                                  <span className="text-[10px] text-slate-500 font-mono">
+                                    {attempt.participantId}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 font-mono font-bold text-emerald-300">
+                                {attempt.roomNumber}
+                              </td>
+                              <td className="py-3 px-4 text-slate-300">{attempt.examTitle}</td>
+                              <td className="py-3 px-4 text-slate-400">
+                                {new Date(attempt.startedAt).toLocaleString()}
+                              </td>
+                              <td className="py-3 px-4 text-slate-400">
+                                {attempt.endedAt ? new Date(attempt.endedAt).toLocaleTimeString() : '—'}
+                              </td>
+                              <td className="py-3 px-4 text-slate-300 font-medium">
+                                {formatDuration(attempt.durationSeconds)}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  attempt.status === 'Completed'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : attempt.status === 'Terminated'
+                                    ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                                    : attempt.status === 'Time Expired'
+                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                }`}>
+                                  {attempt.status === 'Terminated' ? 'Ejected / Terminated' : attempt.status}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                {(() => {
+                                  const maxV = attempt.maxViolations || rooms.find(r => r.id === attempt.examId)?.maxViolations || 5;
+                                  return (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className={`font-bold ${attempt.violations >= maxV ? 'text-red-400 font-black' : attempt.violations > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                                        {attempt.violations} / {maxV}
+                                      </span>
+                                      {attempt.status === 'Terminated' ? (
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
+                                          Ejected
+                                        </span>
+                                      ) : attempt.flagged ? (
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
+                                          Review Flag
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (window.confirm(`Delete submission for "${attempt.participantName || attempt.participantId}"?`)) {
+                                      try {
+                                        await deleteAttempt(attempt.id);
+                                        const next = new Set(selectedAttemptIds);
+                                        next.delete(attempt.id);
+                                        setSelectedAttemptIds(next);
+                                        showToast('Submission deleted.');
+                                      } catch (err: any) {
+                                        alert(`Failed to delete submission: ${err.message}`);
+                                      }
+                                    }
+                                  }}
+                                  className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
+                                  title="Delete submission"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -1011,11 +1159,52 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
              ========================================================= */}
           {currentPage === 'violations' && (
             <div className="space-y-6">
-              <div>
-                <h1 className="text-2xl font-bold text-white">Proctor Security Events</h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Audit log of all detected anti-cheat events (tab switching, focus loss, fullscreen exits, restricted shortcuts).
-                </p>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-bold text-white">Proctor Security Events</h1>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Audit log of all detected anti-cheat events (tab switching, focus loss, fullscreen exits, restricted shortcuts).
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {selectedViolationIds.size > 0 && (
+                    <button
+                      type="button"
+                      disabled={deleteActionLoading}
+                      onClick={async () => {
+                        if (window.confirm(`Delete ${selectedViolationIds.size} selected security violation event(s)?`)) {
+                          setDeleteActionLoading(true);
+                          try {
+                            await deleteMultipleViolations(Array.from(selectedViolationIds));
+                            setSelectedViolationIds(new Set());
+                            showToast(`Deleted ${selectedViolationIds.size} violation event(s).`);
+                          } catch (err: any) {
+                            alert(`Failed to delete violations: ${err.message}`);
+                          } finally {
+                            setDeleteActionLoading(false);
+                          }
+                        }
+                      }}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold bg-red-950/70 hover:bg-red-900 border border-red-800 text-red-200 flex items-center gap-1.5 transition-colors shadow-sm"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      <span>Delete Selected ({selectedViolationIds.size})</span>
+                    </button>
+                  )}
+
+                  {violations.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={deleteActionLoading}
+                      onClick={() => setDeleteViolationsModalOpen(true)}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-red-950/60 border border-slate-700 hover:border-red-800 text-slate-300 hover:text-red-300 flex items-center gap-1.5 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      <span>Delete All Security Events</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {violations.length === 0 ? (
@@ -1025,40 +1214,102 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               ) : (
                 <div className="rounded-3xl bg-slate-900 border border-slate-800 overflow-hidden">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left">
-                      <thead className="text-slate-400 bg-slate-950/60 border-b border-slate-800 uppercase tracking-wider text-[10px]">
-                        <tr>
-                          <th className="py-3 px-4">Timestamp</th>
-                          <th className="py-3 px-4">Participant</th>
-                          <th className="py-3 px-4">Room</th>
-                          <th className="py-3 px-4">Examination</th>
-                          <th className="py-3 px-4">Event #</th>
-                          <th className="py-3 px-4">Reason / Description</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/60">
-                        {violations.map((vio) => (
-                          <tr key={vio.id} className="hover:bg-slate-800/30">
-                            <td className="py-3 px-4 text-slate-400">
-                              {new Date(vio.timestamp).toLocaleTimeString()}
-                            </td>
-                            <td className="py-3 px-4 font-mono text-white font-medium">
-                              {vio.participantId}
-                            </td>
-                            <td className="py-3 px-4 font-mono font-bold text-emerald-300">
-                              {vio.roomNumber}
-                            </td>
-                            <td className="py-3 px-4 text-slate-300">{vio.examTitle}</td>
-                            <td className="py-3 px-4">
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800">
-                                #{vio.number}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-red-300 font-medium">{vio.reason}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    {(() => {
+                      const allVioSelected =
+                        violations.length > 0 &&
+                        violations.every((v) => selectedViolationIds.has(v.id));
+
+                      const toggleSelectAllVio = () => {
+                        if (allVioSelected) {
+                          setSelectedViolationIds(new Set());
+                        } else {
+                          setSelectedViolationIds(new Set(violations.map((v) => v.id)));
+                        }
+                      };
+
+                      const toggleSelectVio = (id: string) => {
+                        const next = new Set(selectedViolationIds);
+                        if (next.has(id)) next.delete(id);
+                        else next.add(id);
+                        setSelectedViolationIds(next);
+                      };
+
+                      return (
+                        <table className="w-full text-xs text-left">
+                          <thead className="text-slate-400 bg-slate-950/60 border-b border-slate-800 uppercase tracking-wider text-[10px]">
+                            <tr>
+                              <th className="py-3 px-3 w-10 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={allVioSelected}
+                                  onChange={toggleSelectAllVio}
+                                  className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                                />
+                              </th>
+                              <th className="py-3 px-4">Timestamp</th>
+                              <th className="py-3 px-4">Participant</th>
+                              <th className="py-3 px-4">Room</th>
+                              <th className="py-3 px-4">Examination</th>
+                              <th className="py-3 px-4">Event #</th>
+                              <th className="py-3 px-4">Reason / Description</th>
+                              <th className="py-3 px-3 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60">
+                            {violations.map((vio) => (
+                              <tr key={vio.id} className="hover:bg-slate-800/30">
+                                <td className="py-3 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedViolationIds.has(vio.id)}
+                                    onChange={() => toggleSelectVio(vio.id)}
+                                    className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                                  />
+                                </td>
+                                <td className="py-3 px-4 text-slate-400">
+                                  {new Date(vio.timestamp).toLocaleTimeString()}
+                                </td>
+                                <td className="py-3 px-4 font-mono text-white font-medium">
+                                  {vio.participantId}
+                                </td>
+                                <td className="py-3 px-4 font-mono font-bold text-emerald-300">
+                                  {vio.roomNumber}
+                                </td>
+                                <td className="py-3 px-4 text-slate-300">{vio.examTitle}</td>
+                                <td className="py-3 px-4">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800">
+                                    #{vio.number}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-red-300 font-medium">{vio.reason}</td>
+                                <td className="py-3 px-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (window.confirm(`Delete security violation event #${vio.number}?`)) {
+                                        try {
+                                          await deleteViolation(vio.id);
+                                          const next = new Set(selectedViolationIds);
+                                          next.delete(vio.id);
+                                          setSelectedViolationIds(next);
+                                          showToast('Security event deleted.');
+                                        } catch (err: any) {
+                                          alert(`Failed to delete violation: ${err.message}`);
+                                        }
+                                      }
+                                    }}
+                                    className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
+                                    title="Delete security event"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
@@ -1112,7 +1363,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               {/* Sub-tab 1: Examination Metrics */}
               {analyticsSubTab === 'metrics' && (
                 <div className="space-y-6 animate-in fade-in duration-200">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                         Completed Sessions
@@ -1132,38 +1383,54 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     </div>
 
                     <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block mb-1">
                         Live In Progress
                       </span>
                       <strong className="text-3xl font-black text-emerald-400">{liveSessions}</strong>
-                      <span className="text-xs text-slate-400 block mt-1">Currently taking exam</span>
+                      <span className="text-xs text-slate-400 block mt-1">Active examinations now</span>
+                    </div>
+
+                    <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
+                      <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block mb-1">
+                        Total Room Visits
+                      </span>
+                      <strong className="text-3xl font-black text-blue-400 font-mono">{totalRoomVisits}</strong>
+                      <span className="text-xs text-slate-400 block mt-1">Examinee room logins &amp; entries</span>
                     </div>
                   </div>
 
                   <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
-                    <h3 className="text-base font-bold text-white">Sessions Distribution by Examination Room</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-white">Sessions Distribution &amp; Room Visits</h3>
+                      <span className="text-xs text-slate-400">Total Visits: <strong className="text-blue-400">{totalRoomVisits}</strong></span>
+                    </div>
                     {rooms.length === 0 ? (
                       <div className="p-8 text-center text-xs text-slate-500">
                         No examination rooms created yet.
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         {rooms.map((room) => {
                           const roomAttempts = attempts.filter((a) => a.examId === room.id);
                           const percent = attempts.length > 0 ? Math.round((roomAttempts.length / attempts.length) * 100) : 0;
                           return (
-                            <div key={room.id} className="space-y-1.5">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-medium text-slate-300 truncate">
+                            <div key={room.id} className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-2">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                <span className="font-semibold text-slate-200">
                                   {room.roomNumber} — {room.title}
                                 </span>
-                                <span className="text-slate-400 font-mono font-semibold">
-                                  {roomAttempts.length} ({percent}%)
-                                </span>
+                                <div className="flex items-center gap-3">
+                                  <span className="px-2 py-0.5 rounded-lg bg-blue-950/60 border border-blue-800/60 text-blue-300 font-mono text-[11px] font-bold">
+                                    {room.visitsCount || 0} visits
+                                  </span>
+                                  <span className="text-slate-300 font-mono font-semibold">
+                                    {roomAttempts.length} submissions ({percent}%)
+                                  </span>
+                                </div>
                               </div>
-                              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                              <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-gradient-to-r from-emerald-500 to-blue-500"
+                                  className="h-full bg-gradient-to-r from-emerald-500 via-teal-500 to-blue-500"
                                   style={{ width: `${percent}%` }}
                                 />
                               </div>
@@ -1573,6 +1840,166 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Delete All Submissions Confirmation Modal */}
+      {deleteAttemptsModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-red-700/80 rounded-3xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider block">
+                    CONFIRMATION • IRREVERSIBLE
+                  </span>
+                  <h3 className="text-lg font-bold text-white mt-0.5">Delete All Submissions</h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!deleteActionLoading) setDeleteAttemptsModalOpen(false);
+                }}
+                disabled={deleteActionLoading}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to delete all <span className="text-red-400 font-bold">{attempts.length}</span> examination submissions? This will remove all examinee scores, timings, answers, and session records permanently from Firestore and local storage.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteAttemptsModalOpen(false)}
+                disabled={deleteActionLoading}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteActionLoading}
+                onClick={async () => {
+                  setDeleteActionLoading(true);
+                  try {
+                    await deleteAllAttempts();
+                    setSelectedAttemptIds(new Set());
+                    setDeleteAttemptsModalOpen(false);
+                    showToast('All examination submissions have been deleted.');
+                  } catch (err: any) {
+                    alert(`Failed to delete all submissions: ${err.message}`);
+                  } finally {
+                    setDeleteActionLoading(false);
+                  }
+                }}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-600/30 flex items-center gap-2 transition-all"
+              >
+                {deleteActionLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Yes, Delete All Submissions</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Security Events Confirmation Modal */}
+      {deleteViolationsModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-red-700/80 rounded-3xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider block">
+                    CONFIRMATION • IRREVERSIBLE
+                  </span>
+                  <h3 className="text-lg font-bold text-white mt-0.5">Delete All Security Events</h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!deleteActionLoading) setDeleteViolationsModalOpen(false);
+                }}
+                disabled={deleteActionLoading}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to delete all <span className="text-red-400 font-bold">{violations.length}</span> security violation events and data findings? This log history cannot be recovered once removed.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteViolationsModalOpen(false)}
+                disabled={deleteActionLoading}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteActionLoading}
+                onClick={async () => {
+                  setDeleteActionLoading(true);
+                  try {
+                    await deleteAllViolations();
+                    setSelectedViolationIds(new Set());
+                    setDeleteViolationsModalOpen(false);
+                    showToast('All security violation events have been deleted.');
+                  } catch (err: any) {
+                    alert(`Failed to delete all security events: ${err.message}`);
+                  } finally {
+                    setDeleteActionLoading(false);
+                  }
+                }}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-600/30 flex items-center gap-2 transition-all"
+              >
+                {deleteActionLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Yes, Delete All Events</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Portal Toast Notification */}
+      {portalToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-slate-900 border border-emerald-500/50 shadow-2xl shadow-emerald-500/20 text-emerald-200 text-xs font-semibold rounded-2xl animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{portalToast}</span>
         </div>
       )}
 

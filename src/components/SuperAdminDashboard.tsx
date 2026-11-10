@@ -41,8 +41,7 @@ import {
   ExamAttempt,
   SecurityViolation,
   SystemConfig,
-  SuperAdminSession,
-  AdminControlSettings
+  SuperAdminSession
 } from '../types';
 import {
   fetchProctors,
@@ -50,8 +49,6 @@ import {
   updateProctor,
   deleteProctor,
   updateAdminCredentials,
-  getAdminSettings,
-  saveAdminSettings,
   resetAllToDefault
 } from '../lib/api';
 import { LoadingScreen } from './LoadingScreen';
