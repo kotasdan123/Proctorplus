@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, KeyRound, User, ArrowRight, Server, Flame, CheckCircle2, Lock, Users, Laptop } from 'lucide-react';
+import { Shield, KeyRound, User, ArrowRight, Lock, Mail } from 'lucide-react';
 import { verifyRoom, recordRoomVisit } from '../lib/api';
 import { ExamRoom, ParticipantSession } from '../types';
 import { LoadingScreen } from './LoadingScreen';
@@ -132,49 +132,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <span className="text-slate-100 font-bold">Your Secure Assessment.</span>
             </div>
           </div>
-
-          {/* Key Capabilities in Green, Blue, Grey */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-            <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-1.5 hover:border-slate-700 transition-colors">
-              <div className="flex items-center gap-2 text-blue-400 text-xs font-bold uppercase tracking-wider">
-                <Laptop className="w-4 h-4 text-blue-400" />
-                <span>Multi-PC Synchronized</span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Admins create rooms once; examinees across multiple computers join simultaneously with instant live session sync.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-1.5 hover:border-slate-700 transition-colors">
-              <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Google Forms Embed</span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Paste your Google Form link. Examinees complete the form in a clean, distraction-free, fullscreen exam environment.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-1.5 hover:border-slate-700 transition-colors">
-              <div className="flex items-center gap-2 text-emerald-300 text-xs font-bold uppercase tracking-wider">
-                <Shield className="w-4 h-4 text-emerald-300" />
-                <span>Anti-Cheat Proctoring</span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Detects tab switching, window minimization, fullscreen exits, and restricted shortcuts with automated incident logs.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-1.5 hover:border-slate-700 transition-colors">
-              <div className="flex items-center gap-2 text-blue-300 text-xs font-bold uppercase tracking-wider">
-                <Users className="w-4 h-4 text-blue-300" />
-                <span>Concurrent Multi-Candidate Testing</span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Host simultaneous examinees in real time with synchronized submission tracking and persistent cloud backup.
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Right Card: Participant Login Form */}
@@ -269,8 +226,22 @@ export const LoginView: React.FC<LoginViewProps> = ({
       </main>
 
       {/* Footer */}
-      <footer className="px-6 py-4 border-t border-slate-800/80 text-center text-xs text-slate-500">
-        Proctor+ Centralized Examination Portal • Multi-PC Synchronized • Anti-Cheat &amp; Timer Proctored
+      <footer className="px-6 py-4 border-t border-slate-800/80 text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+          <span>
+            Proctor+ Centralized Examination Portal • All rights reserved 2026
+          </span>
+          <div className="flex items-center gap-2">
+            <Mail className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+            <span className="text-slate-400">Contact Admin:</span>
+            <a
+              href="mailto:danielgabrielroda@sixeleven.com"
+              className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+            >
+              danielgabrielroda@sixeleven.com
+            </a>
+          </div>
+        </div>
       </footer>
 
       {/* Login Progress Loading Screen */}
