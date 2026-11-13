@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Shield, KeyRound, User, ArrowRight, Lock, Mail } from 'lucide-react';
 import { verifyRoom, recordRoomVisit } from '../lib/api';
 import { ExamRoom, ParticipantSession } from '../types';
@@ -11,6 +11,190 @@ interface LoginViewProps {
   connectedPCs: number;
   syncMode: 'server' | 'firebase';
 }
+
+const AnimatedLoginBackground: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let animationFrameId = 0;
+    let width = 0;
+    let height = 0;
+    const pointer = { x: -9999, y: -9999 };
+
+    interface ParticleNode {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      radius: number;
+      tone: 'emerald' | 'blue' | 'slate';
+    }
+
+    let nodes: ParticleNode[] = [];
+
+    const buildNodes = (w: number, h: number) => {
+      const targetCount = Math.min(54, Math.max(24, Math.floor((w * h) / 28000)));
+      const tones: Array<'emerald' | 'blue' | 'slate'> = ['emerald', 'blue', 'emerald', 'slate'];
+      nodes = Array.from({ length: targetCount }, (_, i) => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.42,
+        vy: (Math.random() - 0.5) * 0.42,
+        radius: 1.3 + Math.random() * 1.4,
+        tone: tones[i % tones.length]
+      }));
+    };
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildNodes(width, height);
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+    };
+
+    const onPointerLeave = () => {
+      pointer.x = -9999;
+      pointer.y = -9999;
+    };
+
+    const drawFrame = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      const maxDist = 148;
+      const pointerDist = 180;
+
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+
+        if (!prefersReducedMotion) {
+          node.x += node.vx;
+          node.y += node.vy;
+
+          if (node.x < 0 || node.x > width) node.vx *= -1;
+          if (node.y < 0 || node.y > height) node.vy *= -1;
+          node.x = Math.max(0, Math.min(width, node.x));
+          node.y = Math.max(0, Math.min(height, node.y));
+
+          // Gentle pointer repulsion/parallax
+          const dxp = node.x - pointer.x;
+          const dyp = node.y - pointer.y;
+          const dp = Math.hypot(dxp, dyp);
+          if (dp > 1 && dp < pointerDist) {
+            const push = (1 - dp / pointerDist) * 0.018;
+            node.x += (dxp / dp) * push * 18;
+            node.y += (dyp / dp) * push * 18;
+          }
+        }
+
+        // Draw links between nearby nodes
+        for (let j = i + 1; j < nodes.length; j++) {
+          const other = nodes[j];
+          const dx = node.x - other.x;
+          const dy = node.y - other.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < maxDist) {
+            const alpha = (1 - dist / maxDist) * 0.22;
+            ctx.beginPath();
+            ctx.moveTo(node.x, node.y);
+            ctx.lineTo(other.x, other.y);
+            ctx.strokeStyle =
+              node.tone === 'blue' || other.tone === 'blue'
+                ? `rgba(56, 189, 248, ${alpha * 0.85})`
+                : `rgba(16, 185, 129, ${alpha})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+
+        // Draw pointer link if close
+        const pdx = node.x - pointer.x;
+        const pdy = node.y - pointer.y;
+        const pdist = Math.hypot(pdx, pdy);
+        if (pdist < pointerDist) {
+          const pAlpha = (1 - pdist / pointerDist) * 0.3;
+          ctx.beginPath();
+          ctx.moveTo(node.x, node.y);
+          ctx.lineTo(pointer.x, pointer.y);
+          ctx.strokeStyle = `rgba(52, 211, 153, ${pAlpha})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        // Draw node dot
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        if (node.tone === 'emerald') {
+          ctx.fillStyle = 'rgba(52, 211, 153, 0.55)';
+        } else if (node.tone === 'blue') {
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
+        } else {
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+        }
+        ctx.fill();
+      }
+
+      if (!prefersReducedMotion) {
+        animationFrameId = window.requestAnimationFrame(drawFrame);
+      }
+    };
+
+    resize();
+    drawFrame();
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerleave', onPointerLeave);
+
+    return () => {
+      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerleave', onPointerLeave);
+    };
+  }, []);
+
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 overflow-hidden z-0"
+    >
+      {/* Drifting Architectural Grid */}
+      <div className="absolute -inset-16 bg-login-grid animate-grid-drift opacity-55 [mask-image:radial-gradient(ellipse_75%_65%_at_50%_45%,#000_35%,transparent_100%)]" />
+
+      {/* Moving Ambient Gradient Fields */}
+      <div className="absolute -top-36 -left-32 w-[42rem] h-[42rem] rounded-full bg-emerald-500/15 blur-3xl animate-aurora-a" />
+      <div className="absolute -bottom-44 -right-32 w-[44rem] h-[44rem] rounded-full bg-sky-500/15 blur-3xl animate-aurora-b" />
+
+      {/* Sweeping Light Beam */}
+      <div className="absolute top-1/4 -left-1/4 w-[140%] h-40 bg-gradient-to-r from-transparent via-emerald-400/10 to-transparent blur-2xl animate-beam-sweep" />
+
+      {/* Interactive Synchronized Constellation Canvas */}
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+
+      {/* Soft Vignette for Content Contrast */}
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/35 via-transparent to-slate-950/75" />
+    </div>
+  );
+};
 
 export const LoginView: React.FC<LoginViewProps> = ({
   onRoomJoined,
@@ -62,9 +246,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div className="relative min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-emerald-500/30 selection:text-emerald-200 overflow-x-hidden">
+      <AnimatedLoginBackground />
+
       {/* Top Header Bar */}
-      <header className="px-6 py-4 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md">
+      <header className="relative z-10 px-6 py-4 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full border-2 border-emerald-500/40 p-0.5 bg-slate-900 shadow-md shadow-emerald-500/20 flex-shrink-0">
             <img
@@ -102,7 +288,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       </header>
 
       {/* Main Grid: Left Presentation, Right Login Form */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
         {/* Left Brand & Architecture Info */}
         <div className="lg:col-span-7 space-y-8">
           <div className="space-y-4">
@@ -226,7 +412,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       </main>
 
       {/* Footer */}
-      <footer className="px-6 py-4 border-t border-slate-800/80 text-xs text-slate-500">
+      <footer className="relative z-10 px-6 py-4 border-t border-slate-800/80 bg-slate-950/50 backdrop-blur-sm text-xs text-slate-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
           <span>
             Proctor+ Centralized Examination Portal • All rights reserved 2026
