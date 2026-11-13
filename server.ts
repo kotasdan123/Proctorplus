@@ -719,6 +719,23 @@ app.post('/api/rooms', (req: Request, res: Response) => {
     return;
   }
 
+  if (availabilityEnabled !== false) {
+    const sMs = startAt ? new Date(startAt).getTime() : NaN;
+    const eMs = endAt ? new Date(endAt).getTime() : NaN;
+    if (startAt && isNaN(sMs)) {
+      res.status(400).json({ error: 'The timeframe is incorrect: Start Date & Time is invalid.' });
+      return;
+    }
+    if (endAt && isNaN(eMs)) {
+      res.status(400).json({ error: 'The timeframe is incorrect: End Date & Time is invalid.' });
+      return;
+    }
+    if (startAt && endAt && sMs >= eMs) {
+      res.status(400).json({ error: 'The timeframe is incorrect: End Date & Time must be later than Start Date & Time.' });
+      return;
+    }
+  }
+
   // Check room number uniqueness
   const duplicate = Object.values(currentDb.rooms).find(
     r => r.roomNumber.toLowerCase() === trimmedRoom.toLowerCase()
@@ -845,6 +862,26 @@ app.put('/api/rooms/:id', (req: Request, res: Response) => {
       createdBy: 'admin'
     };
     currentDb.rooms[id] = targetRoom;
+  }
+
+  const effAvail = availabilityEnabled !== undefined ? Boolean(availabilityEnabled) : targetRoom.availabilityEnabled;
+  if (effAvail !== false && (startAt !== undefined || endAt !== undefined || availabilityEnabled !== undefined)) {
+    const effStart = targetRoom.startAt || '';
+    const effEnd = targetRoom.endAt || '';
+    const sMs = effStart ? new Date(effStart).getTime() : NaN;
+    const eMs = effEnd ? new Date(effEnd).getTime() : NaN;
+    if (effStart && isNaN(sMs)) {
+      res.status(400).json({ error: 'The timeframe is incorrect: Start Date & Time is invalid.' });
+      return;
+    }
+    if (effEnd && isNaN(eMs)) {
+      res.status(400).json({ error: 'The timeframe is incorrect: End Date & Time is invalid.' });
+      return;
+    }
+    if (effStart && effEnd && sMs >= eMs) {
+      res.status(400).json({ error: 'The timeframe is incorrect: End Date & Time must be later than Start Date & Time.' });
+      return;
+    }
   }
 
   currentDb.rooms[id] = targetRoom;

@@ -615,6 +615,22 @@ export async function fetchRooms(): Promise<ExamRoom[]> {
   }
 }
 
+function validateRoomTimeframe(startAt?: string, endAt?: string, availabilityEnabled?: boolean) {
+  if (availabilityEnabled === false) return;
+  const startMs = startAt ? new Date(startAt).getTime() : NaN;
+  const endMs = endAt ? new Date(endAt).getTime() : NaN;
+
+  if (startAt && isNaN(startMs)) {
+    throw new Error('The timeframe is incorrect: Start Date & Time is invalid.');
+  }
+  if (endAt && isNaN(endMs)) {
+    throw new Error('The timeframe is incorrect: End Date & Time is invalid.');
+  }
+  if (startAt && endAt && startMs >= endMs) {
+    throw new Error('The timeframe is incorrect: End Date & Time must be later than Start Date & Time.');
+  }
+}
+
 /**
  * Create a new examination room directly in Google Cloud Firestore.
  * Automatically synchronizes to all connected computers via real-time listeners.
@@ -627,6 +643,8 @@ export async function createRoom(room: Partial<ExamRoom>): Promise<ExamRoom> {
   if (!cleanRoomNumber || !cleanPasscode) {
     throw new Error('Room Number and Passcode are required to create an examination room.');
   }
+
+  validateRoomTimeframe(room.startAt, room.endAt, room.availabilityEnabled);
 
   const newRoom: ExamRoom = {
     id: roomId,
@@ -677,6 +695,10 @@ export async function updateRoom(id: string, room: Partial<ExamRoom>): Promise<E
     ...room,
     id
   };
+
+  if (room.startAt !== undefined || room.endAt !== undefined || room.availabilityEnabled !== undefined) {
+    validateRoomTimeframe(updated.startAt, updated.endAt, updated.availabilityEnabled);
+  }
 
   // Authoritative write to Firestore
   try {

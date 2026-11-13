@@ -817,6 +817,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           <p className="text-xs text-slate-400 mt-1 line-clamp-2">
                             {room.description || 'No examination description provided.'}
                           </p>
+                          {room.availabilityEnabled !== false && (room.startAt || room.endAt) && (
+                            <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-300 bg-slate-950/60 border border-slate-800/80 rounded-lg px-3 py-1.5">
+                              {room.startAt && (
+                                <span>
+                                  <span className="text-slate-500">Start:</span>{' '}
+                                  <strong className="text-emerald-300 font-medium">
+                                    {new Date(room.startAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                                  </strong>
+                                </span>
+                              )}
+                              {room.endAt && (
+                                <span>
+                                  <span className="text-slate-500">End:</span>{' '}
+                                  <strong className="text-amber-300 font-medium">
+                                    {new Date(room.endAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                                  </strong>
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Metrics Bar */}
@@ -1740,6 +1760,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </strong>
               </div>
             </div>
+
+            {viewRoomModal.availabilityEnabled !== false && (viewRoomModal.startAt || viewRoomModal.endAt) && (
+              <div className="p-3 bg-slate-800/50 border border-slate-700/60 rounded-xl space-y-1.5 text-xs">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Availability Schedule</span>
+                {viewRoomModal.startAt && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Start Date &amp; Time:</span>
+                    <span className="text-emerald-300 font-medium">
+                      {new Date(viewRoomModal.startAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    </span>
+                  </div>
+                )}
+                {viewRoomModal.endAt && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">End Date &amp; Time:</span>
+                    <span className="text-amber-300 font-medium">
+                      {new Date(viewRoomModal.endAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2 text-xs">
               <div className="text-slate-400">Google Form Destination:</div>

@@ -10,8 +10,70 @@ interface RoomModalProps {
 
 const DEFAULT_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSf_PLACEHOLDER/viewform?embedded=true';
 
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * Converts a stored ISO timestamp (or local datetime string) into
+ * the local "YYYY-MM-DDTHH:mm" string expected by <input type="datetime-local">.
+ * Avoids slicing UTC ISO strings which causes dates/hours to shift by timezone offset.
+ */
+function toLocalDateTimeInputValue(value?: string): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  // Already in YYYY-MM-DDTHH:mm local format (no Z or offset)
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const d = new Date(trimmed);
+  if (isNaN(d.getTime())) return '';
+
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/**
+ * Strictly parses a "YYYY-MM-DDTHH:mm" string in local time and validates
+ * that the year is realistic and no calendar rollover occurred.
+ */
+function parseLocalDateTimeInput(value: string): Date | null {
+  const trimmed = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(trimmed);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+
+  if (year < 2000 || year > 2100) return null;
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+  if (hour < 0 || hour > 23) return null;
+  if (minute < 0 || minute > 59) return null;
+
+  const d = new Date(year, month - 1, day, hour, minute, 0, 0);
+  if (
+    isNaN(d.getTime()) ||
+    d.getFullYear() !== year ||
+    d.getMonth() !== month - 1 ||
+    d.getDate() !== day ||
+    d.getHours() !== hour ||
+    d.getMinutes() !== minute
+  ) {
+    return null;
+  }
+  return d;
+}
+
 export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) => {
   const isEditing = Boolean(room);
+  const initialStartLocal = toLocalDateTimeInputValue(room?.startAt);
+  const initialEndLocal = toLocalDateTimeInputValue(room?.endAt);
 
   // Generate clean random alphanumeric codes
   const generateRandomCode = (len = 6) => {
@@ -37,13 +99,46 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
   const [availabilityEnabled, setAvailabilityEnabled] = useState(
     room?.availabilityEnabled !== undefined ? room.availabilityEnabled : Boolean(room?.startAt || room?.endAt)
   );
-  const [startAt, setStartAt] = useState(room?.startAt ? room.startAt.slice(0, 16) : '');
-  const [endAt, setEndAt] = useState(room?.endAt ? room.endAt.slice(0, 16) : '');
+  const [startAt, setStartAt] = useState(initialStartLocal);
+  const [endAt, setEndAt] = useState(initialEndLocal);
   const [calculatorEnabled, setCalculatorEnabled] = useState(room?.calculatorEnabled !== undefined ? room.calculatorEnabled : true);
   const [active, setActive] = useState(room ? room.active : true);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const validateTimeframe = (requireAtLeastOneDate: boolean): string | null => {
+    if (!availabilityEnabled) return null;
+
+    const cleanStart = startAt.trim();
+    const cleanEnd = endAt.trim();
+
+    if (requireAtLeastOneDate && !cleanStart && !cleanEnd) {
+      return 'The timeframe is incorrect: Please set a Start Date & Time and/or End Date & Time, or disable the Schedule Availability Window.';
+    }
+
+    const parsedStart = cleanStart ? parseLocalDateTimeInput(cleanStart) : null;
+    if (cleanStart && !parsedStart) {
+      return 'The timeframe is incorrect: Start Date & Time is not a valid date.';
+    }
+
+    const parsedEnd = cleanEnd ? parseLocalDateTimeInput(cleanEnd) : null;
+    if (cleanEnd && !parsedEnd) {
+      return 'The timeframe is incorrect: End Date & Time is not a valid date.';
+    }
+
+    if (parsedStart && parsedEnd && parsedStart.getTime() >= parsedEnd.getTime()) {
+      return 'The timeframe is incorrect: End Date & Time must be later than Start Date & Time.';
+    }
+
+    if (parsedEnd && parsedEnd.getTime() <= Date.now() && (!isEditing || cleanEnd !== initialEndLocal)) {
+      return 'The timeframe is incorrect: End Date & Time cannot be in the past.';
+    }
+
+    return null;
+  };
+
+  const liveTimeframeError = validateTimeframe(false);
 
   const handleRegenerate = () => {
     setRoomNumber(generateRandomDigits());
@@ -69,6 +164,15 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
       return;
     }
 
+    const timeframeErr = validateTimeframe(true);
+    if (timeframeErr) {
+      setError(timeframeErr);
+      return;
+    }
+
+    const parsedStart = availabilityEnabled && startAt.trim() ? parseLocalDateTimeInput(startAt.trim()) : null;
+    const parsedEnd = availabilityEnabled && endAt.trim() ? parseLocalDateTimeInput(endAt.trim()) : null;
+
     setLoading(true);
     try {
       await onSave({
@@ -83,8 +187,8 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
         maxViolations: Math.max(1, Number(maxViolations) || 5),
         calculatorEnabled,
         availabilityEnabled,
-        startAt: availabilityEnabled && startAt ? new Date(startAt).toISOString() : '',
-        endAt: availabilityEnabled && endAt ? new Date(endAt).toISOString() : '',
+        startAt: parsedStart ? parsedStart.toISOString() : '',
+        endAt: parsedEnd ? parsedEnd.toISOString() : '',
         active
       });
       onClose();
@@ -373,31 +477,62 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
             </p>
 
             {availabilityEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800/60 pl-6">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Opens At (Date &amp; Time)
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={startAt}
-                    onChange={(e) => setStartAt(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 font-mono"
-                  />
-                  <span className="text-[10px] text-slate-500 mt-1 block">Earliest moment examinees may enter</span>
+              <div className="space-y-3 pt-2 border-t border-slate-800/60 pl-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                      Start Date &amp; Time (Opens At)
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={startAt}
+                      onChange={(e) => {
+                        setStartAt(e.target.value);
+                        if (error) setError(null);
+                      }}
+                      className={`w-full px-3 py-2 bg-slate-950/70 border rounded-lg text-white text-xs focus:outline-none focus:ring-1 font-mono ${
+                        liveTimeframeError
+                          ? 'border-red-500/70 focus:border-red-400 focus:ring-red-500/30'
+                          : 'border-slate-700 focus:border-emerald-500 focus:ring-emerald-500/30'
+                      }`}
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      {startAt && parseLocalDateTimeInput(startAt)
+                        ? `Local: ${parseLocalDateTimeInput(startAt)!.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`
+                        : 'Earliest moment examinees may enter'}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                      End Date &amp; Time (Closes At)
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={endAt}
+                      onChange={(e) => {
+                        setEndAt(e.target.value);
+                        if (error) setError(null);
+                      }}
+                      className={`w-full px-3 py-2 bg-slate-950/70 border rounded-lg text-white text-xs focus:outline-none focus:ring-1 font-mono ${
+                        liveTimeframeError
+                          ? 'border-red-500/70 focus:border-red-400 focus:ring-red-500/30'
+                          : 'border-slate-700 focus:border-emerald-500 focus:ring-emerald-500/30'
+                      }`}
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      {endAt && parseLocalDateTimeInput(endAt)
+                        ? `Local: ${parseLocalDateTimeInput(endAt)!.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`
+                        : 'Room closes and locks after this time'}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Closes At (Date &amp; Time)
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={endAt}
-                    onChange={(e) => setEndAt(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950/70 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 font-mono"
-                  />
-                  <span className="text-[10px] text-slate-500 mt-1 block">Room closes and locks after this time</span>
-                </div>
+
+                {liveTimeframeError && (
+                  <div className="flex items-center gap-2 p-2.5 text-xs text-red-300 bg-red-950/50 border border-red-800/60 rounded-lg">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-400" />
+                    <span>{liveTimeframeError}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
