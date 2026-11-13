@@ -292,11 +292,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
         {/* Left Brand & Architecture Info */}
         <div className="lg:col-span-7 space-y-8">
           <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold tracking-wider uppercase">
-              <Shield className="w-3.5 h-3.5 text-emerald-400" />
-              <span>SECURE. SMART. PROCTORED.</span>
-            </div>
-
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.1]">
               Welcome to{' '}
               <span className="inline-block px-3 py-1 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-blue-500/20 to-teal-500/20 border-2 border-emerald-400/60 text-emerald-300 shadow-[0_0_25px_rgba(16,185,129,0.25)] font-black">
