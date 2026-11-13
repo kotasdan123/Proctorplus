@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ExamRoom, ExamAttempt, ParticipantSession } from '../types';
-import { Clock, ShieldCheck, Users, LogOut, ArrowRight, Play, CheckCircle2, AlertCircle, Calculator, Calendar } from 'lucide-react';
+import { Clock, ShieldCheck, Users, LogOut, Play, CheckCircle2, AlertCircle, Calculator } from 'lucide-react';
 import { checkRoomAvailability } from '../lib/api';
 
 interface ParticipantRoomDashboardProps {
@@ -19,6 +19,13 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
   onLogout
 }) => {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 5000);
+    return () => clearInterval(id);
+  }, []);
+
   const availability = checkRoomAvailability(room);
 
   const ownAttempts = attempts.filter(
@@ -47,8 +54,12 @@ export const ParticipantRoomDashboard: React.FC<ParticipantRoomDashboardProps> =
               <span className="text-xs font-bold tracking-wider text-emerald-400 uppercase">
                 EXAMINATION ROOM
               </span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">
-                ACTIVE
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
+                availability.available
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  : 'bg-red-500/10 text-red-400 border-red-500/30'
+              }`}>
+                {availability.available ? 'ACTIVE' : availability.status.toUpperCase()}
               </span>
             </div>
             <h1 className="text-lg font-bold text-white leading-tight">

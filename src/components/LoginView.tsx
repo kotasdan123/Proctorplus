@@ -398,11 +398,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
-
-            <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-              <span>Ready for examination</span>
-              <span className="text-emerald-400 font-medium">Independent session per PC</span>
-            </div>
           </div>
         </div>
       </main>
@@ -410,9 +405,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
       {/* Footer */}
       <footer className="relative z-10 px-6 py-4 border-t border-slate-800/80 bg-slate-950/50 backdrop-blur-sm text-xs text-slate-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
-          <span>
-            Proctor+ Centralized Examination Portal • All rights reserved 2026
-          </span>
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-2 gap-y-1">
+            <span>Proctor+ Centralized Examination Portal</span>
+            <span aria-hidden="true">•</span>
+            <span>All rights reserved 2026</span>
+            <span aria-hidden="true">•</span>
+            <span className="text-slate-400 font-medium">Version 1.0.0</span>
+          </div>
           <div className="flex items-center gap-2">
             <Mail className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
             <span className="text-slate-400">Contact Admin:</span>

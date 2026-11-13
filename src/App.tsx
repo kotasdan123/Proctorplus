@@ -20,7 +20,9 @@ import {
   updateRoom,
   deleteRoom,
   createAttempt,
-  subscribeToEvents
+  subscribeToEvents,
+  forceCloseExpiredRooms,
+  isRoomScheduleEnded
 } from './lib/api';
 import { securityShield } from './lib/antiDevtools';
 import { LoginView } from './components/LoginView';
@@ -179,11 +181,18 @@ export default function App() {
       }
     );
 
-    // Periodic safety sync every 10s for other components
+    // Periodic safety sync & schedule expiration enforcement
     const interval = setInterval(() => {
       fetchAttempts().then(setAttempts).catch(() => {});
       fetchViolations().then(setViolations).catch(() => {});
-    }, 10000);
+      setRooms((prev) => {
+        const now = Date.now();
+        const expired = prev.some((r) => r.active && isRoomScheduleEnded(r, now));
+        if (!expired) return prev;
+        forceCloseExpiredRooms(prev).catch(() => {});
+        return prev.map((r) => (r.active && isRoomScheduleEnded(r, now) ? { ...r, active: false } : r));
+      });
+    }, 5000);
 
     return () => {
       unsubscribe();

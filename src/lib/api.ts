@@ -570,6 +570,47 @@ export function subscribeToRooms(
   }
 }
 
+export function isRoomScheduleEnded(room: Pick<ExamRoom, 'availabilityEnabled' | 'endAt'>, now = Date.now()): boolean {
+  if (room.availabilityEnabled === false || !room.endAt) return false;
+  const endMs = new Date(room.endAt).getTime();
+  return !isNaN(endMs) && now >= endMs;
+}
+
+/**
+ * Force-closes any active room whose scheduled availability end time has already passed,
+ * persisting active=false to Firestore and local cache so all clients stay synchronized.
+ */
+export async function forceCloseExpiredRooms(rooms: ExamRoom[]): Promise<ExamRoom[]> {
+  const now = Date.now();
+  const expiredActive = rooms.filter((r) => r.active && isRoomScheduleEnded(r, now));
+  if (expiredActive.length === 0) return rooms;
+
+  const expiredIds = new Set(expiredActive.map((r) => r.id));
+  const normalized = rooms.map((r) => (expiredIds.has(r.id) ? { ...r, active: false } : r));
+  saveLocalRooms(normalized);
+
+  await Promise.all(
+    expiredActive.map(async (r) => {
+      try {
+        await updateDoc(doc(db, 'rooms', r.id), { active: false });
+      } catch (err) {
+        console.warn(`Firestore force-close notice for room ${r.roomNumber}:`, err);
+      }
+      try {
+        await fetch(`${getBaseUrl()}/api/rooms/${r.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+          body: JSON.stringify({ active: false })
+        });
+      } catch {
+        // Ignore offline backend
+      }
+    })
+  );
+
+  return normalized;
+}
+
 /**
  * Authoritative fetch of examination rooms directly from Firestore.
  * Does NOT silently fall back to DEFAULT_ROOMS on error.
@@ -607,7 +648,7 @@ export async function fetchRooms(): Promise<ExamRoom[]> {
 
     items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     saveLocalRooms(items);
-    return items;
+    return await forceCloseExpiredRooms(items);
   } catch (err) {
     console.error('Failed to load rooms from Firestore:', err);
     // Explicitly rethrow so the UI can distinguish between zero rooms vs Firestore error
@@ -689,7 +730,18 @@ export async function createRoom(room: Partial<ExamRoom>): Promise<ExamRoom> {
  */
 export async function updateRoom(id: string, room: Partial<ExamRoom>): Promise<ExamRoom> {
   const existingRooms = getLocalRooms();
-  const existing = existingRooms.find((r) => r.id === id);
+  let existing = existingRooms.find((r) => r.id === id);
+  if (!existing) {
+    try {
+      const snap = await getDoc(doc(db, 'rooms', id));
+      if (snap.exists()) {
+        existing = { id: snap.id, ...(snap.data() as any) } as ExamRoom;
+      }
+    } catch {
+      // Fallback to local if Firestore read fails
+    }
+  }
+
   const updated: ExamRoom = {
     ...(existing || DEFAULT_ROOMS[0]),
     ...room,
@@ -698,6 +750,11 @@ export async function updateRoom(id: string, room: Partial<ExamRoom>): Promise<E
 
   if (room.startAt !== undefined || room.endAt !== undefined || room.availabilityEnabled !== undefined) {
     validateRoomTimeframe(updated.startAt, updated.endAt, updated.availabilityEnabled);
+  }
+
+  // Force-close if scheduled availability time has already ended
+  if (isRoomScheduleEnded(updated)) {
+    updated.active = false;
   }
 
   // Authoritative write to Firestore
@@ -710,7 +767,9 @@ export async function updateRoom(id: string, room: Partial<ExamRoom>): Promise<E
   }
 
   // Update local cache
-  const current = existingRooms.map((r) => (r.id === id ? updated : r));
+  const current = existingRooms.some((r) => r.id === id)
+    ? existingRooms.map((r) => (r.id === id ? updated : r))
+    : [updated, ...existingRooms];
   saveLocalRooms(current);
 
   return updated;
@@ -736,13 +795,28 @@ export async function deleteRoom(id: string): Promise<{ success: boolean; id: st
 }
 
 /**
- * Check whether a room is currently open, upcoming, or expired based on scheduled availability.
+ * Check whether a room is currently open, upcoming, or closed/expired based on scheduled availability.
  */
 export function checkRoomAvailability(room: ExamRoom): {
   available: boolean;
   status: 'Open' | 'Upcoming' | 'Expired' | 'Closed';
   reason?: string;
 } {
+  const now = Date.now();
+  const availabilityEnabled = room.availabilityEnabled !== false && Boolean(room.startAt || room.endAt);
+
+  // Force-close if scheduled availability end time has already ended
+  if (availabilityEnabled && room.endAt) {
+    const endMs = new Date(room.endAt).getTime();
+    if (!isNaN(endMs) && now >= endMs) {
+      return {
+        available: false,
+        status: 'Closed',
+        reason: `Examination room "${room.title}" (${room.roomNumber}) has been force-closed because its scheduled availability ended on ${new Date(endMs).toLocaleString()}.`
+      };
+    }
+  }
+
   if (!room.active) {
     return {
       available: false,
@@ -751,13 +825,10 @@ export function checkRoomAvailability(room: ExamRoom): {
     };
   }
 
-  // If availability option is disabled, the room is accessible anytime
-  const availabilityEnabled = room.availabilityEnabled !== false && Boolean(room.startAt || room.endAt);
   if (!availabilityEnabled) {
     return { available: true, status: 'Open' };
   }
 
-  const now = Date.now();
   if (room.startAt) {
     const startMs = new Date(room.startAt).getTime();
     if (!isNaN(startMs) && now < startMs) {
@@ -765,17 +836,6 @@ export function checkRoomAvailability(room: ExamRoom): {
         available: false,
         status: 'Upcoming',
         reason: `Examination room "${room.title}" (${room.roomNumber}) is not open yet. It is scheduled to become available on ${new Date(startMs).toLocaleString()}.`
-      };
-    }
-  }
-
-  if (room.endAt) {
-    const endMs = new Date(room.endAt).getTime();
-    if (!isNaN(endMs) && now > endMs) {
-      return {
-        available: false,
-        status: 'Expired',
-        reason: `Examination room "${room.title}" (${room.roomNumber}) has closed. The scheduled availability window ended on ${new Date(endMs).toLocaleString()}.`
       };
     }
   }
@@ -1227,12 +1287,21 @@ export function subscribeToEvents(
         });
 
         items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        saveLocalRooms(items);
+        const now = Date.now();
+        const hasExpiredActive = items.some((r) => r.active && isRoomScheduleEnded(r, now));
+        const normalized = hasExpiredActive
+          ? items.map((r) => (r.active && isRoomScheduleEnded(r, now) ? { ...r, active: false } : r))
+          : items;
+
+        saveLocalRooms(normalized);
+        if (hasExpiredActive) {
+          forceCloseExpiredRooms(items).catch(() => {});
+        }
 
         if (onRoomsUpdate) {
-          onRoomsUpdate(items);
+          onRoomsUpdate(normalized);
         }
-        onUpdate({ type: 'rooms_updated', count: items.length, rooms: items });
+        onUpdate({ type: 'rooms_updated', count: normalized.length, rooms: normalized });
       },
       (err) => {
         console.error('Firestore rooms onSnapshot failed:', err);

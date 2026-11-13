@@ -36,12 +36,12 @@ function toLocalDateTimeInputValue(value?: string): string {
 }
 
 /**
- * Strictly parses a "YYYY-MM-DDTHH:mm" string in local time and validates
+ * Strictly parses a "YYYY-MM-DDTHH:mm" (or ":ss") string in local time and validates
  * that the year is realistic and no calendar rollover occurred.
  */
 function parseLocalDateTimeInput(value: string): Date | null {
   const trimmed = value.trim();
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(trimmed);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
   if (!match) return null;
 
   const year = Number(match[1]);
@@ -49,14 +49,16 @@ function parseLocalDateTimeInput(value: string): Date | null {
   const day = Number(match[3]);
   const hour = Number(match[4]);
   const minute = Number(match[5]);
+  const second = match[6] ? Number(match[6]) : 0;
 
   if (year < 2000 || year > 2100) return null;
   if (month < 1 || month > 12) return null;
   if (day < 1 || day > 31) return null;
   if (hour < 0 || hour > 23) return null;
   if (minute < 0 || minute > 59) return null;
+  if (second < 0 || second > 59) return null;
 
-  const d = new Date(year, month - 1, day, hour, minute, 0, 0);
+  const d = new Date(year, month - 1, day, hour, minute, second, 0);
   if (
     isNaN(d.getTime()) ||
     d.getFullYear() !== year ||
@@ -140,6 +142,25 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
 
   const liveTimeframeError = validateTimeframe(false);
 
+  const parsedStartPreview = availabilityEnabled && startAt.trim() ? parseLocalDateTimeInput(startAt.trim()) : null;
+  const parsedEndPreview = availabilityEnabled && endAt.trim() ? parseLocalDateTimeInput(endAt.trim()) : null;
+  const isScheduleEnded = Boolean(
+    availabilityEnabled && parsedEndPreview && parsedEndPreview.getTime() <= Date.now()
+  );
+
+  const syncActiveWithSchedule = (nextAvail: boolean, nextStart: string, nextEnd: string) => {
+    if (!nextAvail) {
+      setActive(true);
+      return;
+    }
+    const endParsed = nextEnd.trim() ? parseLocalDateTimeInput(nextEnd.trim()) : null;
+    if (endParsed && endParsed.getTime() <= Date.now()) {
+      setActive(false);
+    } else if (nextStart.trim() || nextEnd.trim()) {
+      setActive(true);
+    }
+  };
+
   const handleRegenerate = () => {
     setRoomNumber(generateRandomDigits());
     setPasscode(generateRandomCode(6));
@@ -173,6 +194,10 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
     const parsedStart = availabilityEnabled && startAt.trim() ? parseLocalDateTimeInput(startAt.trim()) : null;
     const parsedEnd = availabilityEnabled && endAt.trim() ? parseLocalDateTimeInput(endAt.trim()) : null;
 
+    // Force-close the room if the scheduled availability end time has already ended
+    const scheduleEnded = Boolean(availabilityEnabled && parsedEnd && parsedEnd.getTime() <= Date.now());
+    const finalActive = scheduleEnded ? false : active;
+
     setLoading(true);
     try {
       await onSave({
@@ -189,7 +214,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
         availabilityEnabled,
         startAt: parsedStart ? parsedStart.toISOString() : '',
         endAt: parsedEnd ? parsedEnd.toISOString() : '',
-        active
+        active: finalActive
       });
       onClose();
     } catch (err: any) {
@@ -438,7 +463,12 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                   type="checkbox"
                   id="availabilityEnabled"
                   checked={availabilityEnabled}
-                  onChange={(e) => setAvailabilityEnabled(e.target.checked)}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setAvailabilityEnabled(next);
+                    if (error) setError(null);
+                    syncActiveWithSchedule(next, startAt, endAt);
+                  }}
                   className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4 bg-slate-900 cursor-pointer"
                 />
                 <label htmlFor="availabilityEnabled" className="text-xs font-semibold text-slate-200 flex items-center gap-1.5 cursor-pointer">
@@ -454,6 +484,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                     onClick={() => {
                       setStartAt('');
                       setEndAt('');
+                      if (error) setError(null);
                     }}
                     className="text-[11px] text-amber-400 hover:text-amber-300 font-medium transition-colors"
                   >
@@ -472,7 +503,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
 
             <p className="text-[11px] text-slate-400 leading-relaxed pl-6">
               {availabilityEnabled
-                ? 'When enabled, examinees can ONLY enter this room between the set start and end date/time. Attempts before or after this window will be rejected with an availability notice.'
+                ? 'When enabled, examinees can ONLY enter this room between the set start and end date/time. The room automatically force-closes once the end time passes.'
                 : 'Availability option is disabled. Examinees can join and take exams anytime as long as the room is Active.'}
             </p>
 
@@ -487,8 +518,10 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                       type="datetime-local"
                       value={startAt}
                       onChange={(e) => {
-                        setStartAt(e.target.value);
+                        const val = e.target.value;
+                        setStartAt(val);
                         if (error) setError(null);
+                        syncActiveWithSchedule(availabilityEnabled, val, endAt);
                       }}
                       className={`w-full px-3 py-2 bg-slate-950/70 border rounded-lg text-white text-xs focus:outline-none focus:ring-1 font-mono ${
                         liveTimeframeError
@@ -510,8 +543,10 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                       type="datetime-local"
                       value={endAt}
                       onChange={(e) => {
-                        setEndAt(e.target.value);
+                        const val = e.target.value;
+                        setEndAt(val);
                         if (error) setError(null);
+                        syncActiveWithSchedule(availabilityEnabled, startAt, val);
                       }}
                       className={`w-full px-3 py-2 bg-slate-950/70 border rounded-lg text-white text-xs focus:outline-none focus:ring-1 font-mono ${
                         liveTimeframeError
@@ -522,17 +557,43 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
                     <span className="text-[10px] text-slate-500 mt-1 block">
                       {endAt && parseLocalDateTimeInput(endAt)
                         ? `Local: ${parseLocalDateTimeInput(endAt)!.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`
-                        : 'Room closes and locks after this time'}
+                        : 'Room force-closes and locks after this time'}
                     </span>
                   </div>
                 </div>
 
-                {liveTimeframeError && (
+                {liveTimeframeError ? (
                   <div className="flex items-center gap-2 p-2.5 text-xs text-red-300 bg-red-950/50 border border-red-800/60 rounded-lg">
                     <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-400" />
                     <span>{liveTimeframeError}</span>
                   </div>
-                )}
+                ) : isScheduleEnded ? (
+                  <div className="flex items-center gap-2 p-2.5 text-xs text-amber-300 bg-amber-950/40 border border-amber-800/60 rounded-lg">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+                    <span>
+                      Scheduled availability has ended — this room is force-closed. Update the End Date &amp; Time or clear dates to reopen it.
+                    </span>
+                  </div>
+                ) : (startAt || endAt) ? (
+                  <div className="flex items-center justify-between gap-2 p-2.5 text-xs bg-slate-950/60 border border-slate-800 rounded-lg">
+                    <span className="text-slate-300">
+                      {parsedStartPreview && parsedStartPreview.getTime() > Date.now()
+                        ? 'Scheduled status: Upcoming (will open automatically at Start Date & Time).'
+                        : active
+                        ? 'Scheduled status: Open Now — examinees can access this room immediately.'
+                        : 'Scheduled window is open, but room is manually set to inactive below.'}
+                    </span>
+                    {!active && (!parsedEndPreview || parsedEndPreview.getTime() > Date.now()) && (
+                      <button
+                        type="button"
+                        onClick={() => setActive(true)}
+                        className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 whitespace-nowrap"
+                      >
+                        Activate Room
+                      </button>
+                    )}
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
@@ -541,12 +602,15 @@ export const RoomModal: React.FC<RoomModalProps> = ({ room, onClose, onSave }) =
             <input
               type="checkbox"
               id="roomActive"
-              checked={active}
+              disabled={isScheduleEnded}
+              checked={isScheduleEnded ? false : active}
               onChange={(e) => setActive(e.target.checked)}
-              className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4 bg-slate-900"
+              className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4 bg-slate-900 disabled:opacity-50"
             />
             <label htmlFor="roomActive" className="text-xs text-slate-300 font-medium cursor-pointer">
-              Room is currently Active (examinees can join immediately)
+              {isScheduleEnded
+                ? 'Room is Force-Closed (scheduled End Date & Time has already ended)'
+                : 'Room is currently Active (examinees can join during scheduled availability)'}
             </label>
           </div>
 

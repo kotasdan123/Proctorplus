@@ -943,27 +943,34 @@ app.post('/api/rooms/verify', (req: Request, res: Response) => {
     return;
   }
 
-  if (!match.active) {
-    res.status(403).json({ error: 'This examination room is currently closed by the administrator.' });
-    return;
-  }
-
   const now = Date.now();
   const availabilityEnabled = match.availabilityEnabled !== false;
   if (availabilityEnabled) {
+    if (match.endAt && new Date(match.endAt).getTime() <= now) {
+      if (match.active) {
+        match.active = false;
+        currentDb.rooms[match.id] = match;
+        db = currentDb;
+        saveDatabase(currentDb);
+        broadcastUpdate('room_updated', match);
+      }
+      res.status(403).json({
+        error: `This examination room has been force-closed. The availability window ended on ${new Date(match.endAt).toLocaleString()}.`
+      });
+      return;
+    }
+
     if (match.startAt && new Date(match.startAt).getTime() > now) {
       res.status(403).json({
         error: `This examination room is not open yet. It is scheduled to open on ${new Date(match.startAt).toLocaleString()}.`
       });
       return;
     }
+  }
 
-    if (match.endAt && new Date(match.endAt).getTime() < now) {
-      res.status(403).json({
-        error: `This examination room has closed. The availability window ended on ${new Date(match.endAt).toLocaleString()}.`
-      });
-      return;
-    }
+  if (!match.active) {
+    res.status(403).json({ error: 'This examination room is currently closed by the administrator.' });
+    return;
   }
 
   res.json({

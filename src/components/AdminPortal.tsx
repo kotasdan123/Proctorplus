@@ -231,16 +231,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   const getAvailability = (room: ExamRoom) => {
+    const now = Date.now();
+    const availabilityEnabled = room.availabilityEnabled !== false && Boolean(room.startAt || room.endAt);
+    if (availabilityEnabled && room.endAt) {
+      const endMs = new Date(room.endAt).getTime();
+      if (!isNaN(endMs) && now >= endMs) {
+        return { status: 'Force-Closed (Ended)', color: 'text-red-300 bg-red-950/60 border-red-800/70' };
+      }
+    }
     if (!room.active) return { status: 'Closed', color: 'text-slate-400 bg-slate-800' };
-    if (room.availabilityEnabled === false || (!room.startAt && !room.endAt)) {
+    if (!availabilityEnabled) {
       return { status: 'Open Anytime', color: 'text-emerald-400 bg-emerald-950/60' };
     }
-    const now = Date.now();
     if (room.startAt && new Date(room.startAt).getTime() > now) {
       return { status: 'Upcoming', color: 'text-blue-400 bg-blue-950/60' };
-    }
-    if (room.endAt && new Date(room.endAt).getTime() < now) {
-      return { status: 'Expired', color: 'text-amber-400 bg-amber-950/60' };
     }
     return { status: 'Open', color: 'text-emerald-400 bg-emerald-950/60' };
   };
@@ -898,7 +902,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => onUpdateRoom(room.id, { active: !room.active })}
+                            onClick={() => {
+                              const ended =
+                                !room.active &&
+                                room.availabilityEnabled !== false &&
+                                Boolean(room.endAt) &&
+                                !isNaN(new Date(room.endAt!).getTime()) &&
+                                Date.now() >= new Date(room.endAt!).getTime();
+
+                              if (ended) {
+                                showToast('Scheduled End Date & Time has already passed. Update or disable the schedule dates to reopen.');
+                                setEditingRoom(room);
+                                setCreateModalOpen(true);
+                                return;
+                              }
+                              onUpdateRoom(room.id, { active: !room.active });
+                            }}
                             className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${
                               room.active
                                 ? 'bg-amber-950/40 text-amber-400 border border-amber-800/60 hover:bg-amber-950/70'
