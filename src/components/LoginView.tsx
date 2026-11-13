@@ -304,12 +304,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </span>
             </h1>
 
-            <p className="text-slate-200 text-base sm:text-lg leading-relaxed max-w-2xl font-normal">
-              A centralized online examination and proctoring portal designed for secure, organized, and efficient assessments.
-            </p>
-
-            <p className="text-slate-400 text-sm sm:text-base leading-relaxed max-w-2xl">
-              Manage examination rooms, monitor active sessions, and provide examinees with a seamless testing experience—all through one reliable platform.
+            <p className="text-slate-300 text-base sm:text-lg leading-relaxed max-w-2xl font-normal">
+              Manage examination rooms, monitor active sessions, and provide examinees with a seamless testing experience, all through one reliable platform.
             </p>
 
             <div className="inline-block px-4 py-2 rounded-xl bg-slate-900/80 border border-slate-700/80 text-xs sm:text-sm font-semibold text-slate-300">
