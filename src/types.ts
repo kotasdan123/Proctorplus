@@ -20,7 +20,7 @@ export interface ExamRoom {
   createdByProctor?: string; // friendly proctor attribution
 }
 
-export type AttemptStatus = 'In Progress' | 'Completed' | 'Time Expired' | 'Terminated';
+export type AttemptStatus = 'In Progress' | 'Completed' | 'Time Expired' | 'Terminated' | 'Exited';
 
 export interface ExamAttempt {
   id: string;
@@ -116,10 +116,22 @@ export interface AdminSession {
 
 export type UserSession = ParticipantSession | ProctorSession | SuperAdminSession | AdminSession | null;
 
+export interface SheetWorksheet {
+  name: string;
+  headers: string[];
+  rows: string[][];
+}
+
 export interface SheetData {
   url: string;
+  provider?: 'google' | 'excel' | 'csv' | 'unknown';
+  embedUrl?: string;
+  officeViewerUrl?: string;
+  resolvedUrl?: string;
   lastSyncedAt: number | null;
   headers: string[];
   rows: string[][];
+  sheets?: SheetWorksheet[];
+  activeSheetName?: string;
   hasUnsavedEdits?: boolean;
 }

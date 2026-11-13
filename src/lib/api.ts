@@ -1314,13 +1314,41 @@ export async function fetchSheetData(force = false): Promise<SheetData> {
       headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' }
     });
     if (res.ok) {
-      const data = await res.json();
+      let data: SheetData = await res.json();
+      // If server has no URL yet, check Firestore config/sheet for cross-PC persistence
+      if (!data.url) {
+        try {
+          const sheetDoc = await getDoc(doc(db, 'config', 'sheet'));
+          if (sheetDoc.exists() && sheetDoc.data()?.url) {
+            const fsUrl = String(sheetDoc.data().url).trim();
+            if (fsUrl) {
+              data = await saveSheetUrl(fsUrl);
+            }
+          }
+        } catch {
+          // Ignore Firestore fallback read error
+        }
+      }
       saveLocalSheet(data);
       return data;
     }
   } catch {
     // Fallback
   }
+
+  // Try Firestore config/sheet if server unreachable
+  try {
+    const sheetDoc = await getDoc(doc(db, 'config', 'sheet'));
+    if (sheetDoc.exists() && sheetDoc.data()?.url) {
+      const local = getLocalSheet();
+      local.url = String(sheetDoc.data().url).trim();
+      saveLocalSheet(local);
+      return local;
+    }
+  } catch {
+    // Ignore
+  }
+
   return getLocalSheet();
 }
 
@@ -1432,9 +1460,9 @@ export async function syncSheetData(url?: string): Promise<SheetData> {
     serverError = err.message || 'Server connection failed';
   }
 
-  // Client-side direct fallback if backend fetch failed
+  // Client-side direct CSV fallback if Google Sheet / raw CSV and backend fetch failed
   const targetUrl = url || getLocalSheet().url;
-  if (targetUrl) {
+  if (targetUrl && (targetUrl.includes('docs.google.com/spreadsheets') || targetUrl.toLowerCase().includes('.csv'))) {
     const clientData = await fetchDirectClientCSV(targetUrl);
     if (clientData) {
       saveLocalSheet(clientData);
@@ -1444,12 +1472,10 @@ export async function syncSheetData(url?: string): Promise<SheetData> {
   }
 
   if (serverError) {
-    throw new Error(
-      `Could not sync with Google Sheet: ${serverError}. Please check that the link is correct and the Google Sheet share setting is set to "Anyone with the link can view".`
-    );
+    throw new Error(serverError);
   }
 
-  throw new Error('Could not connect to Google Sheet. Please check the URL and permissions.');
+  throw new Error('Could not connect to spreadsheet. Please verify the link and sharing permissions ("Anyone with the link can view").');
 }
 
 export async function saveSheetData(payload: { headers?: string[]; rows: string[][]; url?: string }): Promise<SheetData> {
@@ -1532,7 +1558,14 @@ export async function deleteSheetRow(index: number): Promise<void> {
 }
 
 export async function saveSheetUrl(url: string): Promise<SheetData> {
-  const cleanedUrl = url.trim();
+  let cleanedUrl = url.trim();
+  if (cleanedUrl.toLowerCase().includes('<iframe')) {
+    const srcMatch = cleanedUrl.match(/src\s*=\s*["']([^"']+)["']/i);
+    if (srcMatch && srcMatch[1]) {
+      cleanedUrl = srcMatch[1].replace(/&amp;/g, '&').trim();
+    }
+  }
+
   try {
     const res = await fetch(`${getBaseUrl()}/api/sheet/url`, {
       method: 'POST',
@@ -1544,7 +1577,7 @@ export async function saveSheetUrl(url: string): Promise<SheetData> {
       saveLocalSheet(data.sheetData);
       try {
         await setDoc(doc(db, 'config', 'sheet'), {
-          url: cleanedUrl,
+          url: data.sheetData?.url || cleanedUrl,
           updatedAt: Date.now()
         });
       } catch {

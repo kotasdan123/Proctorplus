@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
+import * as XLSX from 'xlsx';
 
 const app = express();
 const PORT = 3000;
@@ -57,7 +58,7 @@ interface AttemptRecord {
   startedAt: number;
   endedAt: number | null;
   durationSeconds?: number;
-  status: 'In Progress' | 'Completed' | 'Time Expired' | 'Terminated';
+  status: 'In Progress' | 'Completed' | 'Time Expired' | 'Terminated' | 'Exited';
   violations: number;
   maxViolations?: number;
   flagged: boolean;
@@ -87,11 +88,23 @@ interface ProctorRecord {
   lastLoginAt?: number;
 }
 
+interface SheetWorksheet {
+  name: string;
+  headers: string[];
+  rows: string[][];
+}
+
 interface SheetRecord {
   url: string;
+  provider?: 'google' | 'excel' | 'csv' | 'unknown';
+  embedUrl?: string;
+  officeViewerUrl?: string;
+  resolvedUrl?: string;
   lastSyncedAt: number | null;
   headers: string[];
   rows: string[][];
+  sheets?: SheetWorksheet[];
+  activeSheetName?: string;
 }
 
 interface DBState {
@@ -1200,56 +1213,520 @@ function parseCSV(text: string): string[][] {
   return rows.filter((r) => r.some((c) => c !== ''));
 }
 
-async function fetchGoogleSheetCSV(sheetUrl: string): Promise<{ headers: string[]; rows: string[][] }> {
-  if (!sheetUrl || !sheetUrl.trim()) {
-    return { headers: [], rows: [] };
+function normalizeSpreadsheetInput(rawInput: string): string {
+  const trimmed = (rawInput || '').trim();
+  if (!trimmed) return '';
+  // Support users pasting full <iframe src="..."></iframe> snippet from Excel Online or Google Sheets
+  if (trimmed.toLowerCase().includes('<iframe')) {
+    const srcMatch = trimmed.match(/src\s*=\s*["']([^"']+)["']/i);
+    if (srcMatch && srcMatch[1]) {
+      return srcMatch[1].replace(/&amp;/g, '&').trim();
+    }
   }
-  const cleanUrl = sheetUrl.trim();
-  let exportUrl = cleanUrl;
+  return trimmed;
+}
 
-  // Extract gid if present
-  let gid: string | null = null;
-  const gidMatch = cleanUrl.match(/[?&#]gid=([0-9]+)/);
-  if (gidMatch && gidMatch[1]) {
-    gid = gidMatch[1];
+function detectSpreadsheetProvider(url: string): 'google' | 'excel' | 'csv' | 'unknown' {
+  const lower = url.toLowerCase();
+  if (lower.includes('docs.google.com/spreadsheets')) return 'google';
+  if (
+    lower.includes('1drv.ms') ||
+    lower.includes('onedrive.live.com') ||
+    lower.includes('sharepoint.com') ||
+    lower.includes('sharepoint-df.com') ||
+    lower.includes('view.officeapps.live.com') ||
+    /\.(xlsx|xls|xlsm|xlsb|ods)(\?|$|#)/i.test(lower)
+  ) {
+    return 'excel';
+  }
+  if (/\.csv(\?|$|#)/i.test(lower) || lower.includes('output=csv') || lower.includes('format=csv')) {
+    return 'csv';
+  }
+  return 'unknown';
+}
+
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+async function resolveSpreadsheetMetadata(rawInput: string): Promise<{
+  cleanUrl: string;
+  provider: 'google' | 'excel' | 'csv' | 'unknown';
+  resolvedUrl: string;
+  embedUrl: string;
+  officeViewerUrl: string;
+  downloadCandidates: string[];
+}> {
+  const cleanUrl = normalizeSpreadsheetInput(rawInput);
+  if (!cleanUrl) {
+    return {
+      cleanUrl: '',
+      provider: 'unknown',
+      resolvedUrl: '',
+      embedUrl: '',
+      officeViewerUrl: '',
+      downloadCandidates: []
+    };
   }
 
-  // Check if it's already a direct CSV export link
-  if (cleanUrl.includes('/export?format=csv') || cleanUrl.includes('/pub?output=csv')) {
-    exportUrl = cleanUrl;
-  } else {
-    // Check if published web URL: /spreadsheets/d/e/2PACX-.../pubhtml or /pub
+  const provider = detectSpreadsheetProvider(cleanUrl);
+
+  // 1. GOOGLE SHEETS
+  if (provider === 'google') {
+    let gid: string | null = null;
+    const gidMatch = cleanUrl.match(/[?&#]gid=([0-9]+)/);
+    if (gidMatch && gidMatch[1]) gid = gidMatch[1];
+
     const pubMatch = cleanUrl.match(/\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/);
     if (pubMatch && pubMatch[1]) {
-      exportUrl = `https://docs.google.com/spreadsheets/d/e/${pubMatch[1]}/pub?output=csv${gid ? `&gid=${gid}` : ''}`;
-    } else {
-      // Standard sheet URL: /spreadsheets/d/([a-zA-Z0-9-_]+)
-      const docMatch = cleanUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-      if (docMatch && docMatch[1] && docMatch[1] !== 'e') {
-        exportUrl = `https://docs.google.com/spreadsheets/d/${docMatch[1]}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+      const csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubMatch[1]}/pub?output=csv${gid ? `&gid=${gid}` : ''}`;
+      const embedUrl = `https://docs.google.com/spreadsheets/d/e/${pubMatch[1]}/pubhtml${gid ? `?gid=${gid}&single=true` : '?widget=true&headers=false'}`;
+      return {
+        cleanUrl,
+        provider: 'google',
+        resolvedUrl: cleanUrl,
+        embedUrl,
+        officeViewerUrl: '',
+        downloadCandidates: [csvUrl]
+      };
+    }
+
+    const docMatch = cleanUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (docMatch && docMatch[1] && docMatch[1] !== 'e') {
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${docMatch[1]}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+      const embedUrl = `https://docs.google.com/spreadsheets/d/${docMatch[1]}/preview${gid ? `?gid=${gid}` : ''}`;
+      return {
+        cleanUrl,
+        provider: 'google',
+        resolvedUrl: cleanUrl,
+        embedUrl,
+        officeViewerUrl: '',
+        downloadCandidates: [csvUrl]
+      };
+    }
+
+    return {
+      cleanUrl,
+      provider: 'google',
+      resolvedUrl: cleanUrl,
+      embedUrl: cleanUrl,
+      officeViewerUrl: '',
+      downloadCandidates: [cleanUrl]
+    };
+  }
+
+  // 2. MICROSOFT EXCEL ONLINE (1drv.ms, onedrive.live.com, *.sharepoint.com, view.officeapps.live.com, direct .xlsx)
+  if (provider === 'excel') {
+    let resolvedUrl = cleanUrl;
+    const downloadCandidates: string[] = [];
+    let embedUrl = '';
+    let officeViewerUrl = '';
+
+    // Extract src if already a view.officeapps.live.com link
+    if (cleanUrl.toLowerCase().includes('view.officeapps.live.com')) {
+      try {
+        const u = new URL(cleanUrl);
+        const innerSrc = u.searchParams.get('src');
+        embedUrl = cleanUrl.replace(/\/op\/view\.aspx/i, '/op/embed.aspx');
+        officeViewerUrl = embedUrl;
+        if (innerSrc) {
+          downloadCandidates.push(innerSrc);
+        }
+      } catch {
+        embedUrl = cleanUrl;
       }
+      return {
+        cleanUrl,
+        provider: 'excel',
+        resolvedUrl,
+        embedUrl,
+        officeViewerUrl,
+        downloadCandidates
+      };
+    }
+
+    // Direct .xlsx/.xls URL
+    if (/\.(xlsx|xls|xlsm|xlsb|ods)(\?|$|#)/i.test(cleanUrl)) {
+      downloadCandidates.push(cleanUrl);
+      officeViewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(cleanUrl)}`;
+      return {
+        cleanUrl,
+        provider: 'excel',
+        resolvedUrl: cleanUrl,
+        embedUrl: officeViewerUrl,
+        officeViewerUrl,
+        downloadCandidates
+      };
+    }
+
+    // Attempt server-side redirect resolution for 1drv.ms and sharepoint /:x:/ short links
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(cleanUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: {
+          'User-Agent': BROWSER_UA,
+          'Accept': 'text/html,application/xhtml+xml,*/*'
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (res.url) {
+        resolvedUrl = res.url;
+      }
+    } catch {
+      // Ignore redirect resolution errors and proceed with pattern parsing
+    }
+
+    const inspectUrls = [resolvedUrl, cleanUrl];
+    let resid = '';
+    let cid = '';
+    let authkey = '';
+
+    for (const candidate of inspectUrls) {
+      try {
+        const u = new URL(candidate);
+        if (!resid) resid = u.searchParams.get('resid') || '';
+        if (!cid) cid = u.searchParams.get('cid') || '';
+        if (!authkey) authkey = u.searchParams.get('authkey') || '';
+        if (!resid && u.searchParams.get('id') && candidate.includes('onedrive.live.com')) {
+          const idVal = u.searchParams.get('id') || '';
+          if (idVal.includes('!')) resid = idVal;
+        }
+      } catch {
+        // ignore URL parse error
+      }
+    }
+
+    // Compute OneDrive public Shares API v1.0 token (works for Anyone with link on 1drv.ms / onedrive.live.com)
+    const shareBase64 = Buffer.from(cleanUrl, 'utf8')
+      .toString('base64')
+      .replace(/=+$/, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+    const shareToken = `u!${shareBase64}`;
+
+    // Try fetching OneDrive metadata to get direct @content.downloadUrl if personal OneDrive
+    if (cleanUrl.includes('1drv.ms') || cleanUrl.includes('onedrive.live.com')) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000);
+        const metaRes = await fetch(`https://api.onedrive.com/v1.0/shares/${shareToken}/driveItem`, {
+          headers: { 'User-Agent': BROWSER_UA, 'Accept': 'application/json' },
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (metaRes.ok) {
+          const metaJson: any = await metaRes.json();
+          if (metaJson['@content.downloadUrl']) {
+            downloadCandidates.push(metaJson['@content.downloadUrl']);
+          }
+          if (metaJson.id && !resid) resid = metaJson.id;
+          if (metaJson.parentReference?.driveId && !cid) cid = metaJson.parentReference.driveId;
+        }
+      } catch {
+        // Ignore shares metadata lookup errors
+      }
+      downloadCandidates.push(`https://api.onedrive.com/v1.0/shares/${shareToken}/root/content`);
+    }
+
+    // Classic OneDrive Personal (resid / authkey / cid)
+    if (resid) {
+      const qs = new URLSearchParams();
+      qs.set('resid', resid);
+      if (cid) qs.set('cid', cid);
+      if (authkey) qs.set('authkey', authkey);
+
+      const dlUrl = `https://onedrive.live.com/download?${qs.toString()}`;
+      downloadCandidates.push(dlUrl);
+
+      const embedQs = new URLSearchParams(qs);
+      embedQs.set('em', '2');
+      embedQs.set('wdAllowInteractivity', 'True');
+      embedQs.set('wdDownloadButton', 'True');
+      embedUrl = `https://onedrive.live.com/embed?${embedQs.toString()}`;
+      officeViewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(dlUrl)}`;
+    } else if (cleanUrl.includes('onedrive.live.com/embed') || resolvedUrl.includes('onedrive.live.com/embed')) {
+      embedUrl = cleanUrl.includes('/embed') ? cleanUrl : resolvedUrl;
+    }
+
+    // SharePoint / OneDrive for Business (*.sharepoint.com) or new OneDrive personal paths
+    const isSharePoint =
+      cleanUrl.toLowerCase().includes('sharepoint.com') ||
+      resolvedUrl.toLowerCase().includes('sharepoint.com');
+
+    if (isSharePoint || !embedUrl) {
+      // Check if resolvedUrl or cleanUrl is Doc.aspx / WopiFrame.aspx
+      const docCandidate = [resolvedUrl, cleanUrl].find(
+        (u) => u.includes('Doc.aspx') || u.includes('WopiFrame.aspx')
+      );
+
+      if (docCandidate) {
+        try {
+          const u = new URL(docCandidate);
+          const sourcedoc = u.searchParams.get('sourcedoc');
+          u.searchParams.set('action', 'embedview');
+          u.searchParams.set('wdAllowInteractivity', 'True');
+          embedUrl = u.toString();
+
+          if (sourcedoc) {
+            const layoutIdx = docCandidate.indexOf('/_layouts/15/');
+            if (layoutIdx !== -1) {
+              const siteRoot = docCandidate.substring(0, layoutIdx);
+              const spDownload = `${siteRoot}/_layouts/15/download.aspx?UniqueId=${encodeURIComponent(sourcedoc)}`;
+              downloadCandidates.push(spDownload);
+            }
+          }
+        } catch {
+          embedUrl = docCandidate;
+        }
+      }
+
+      // Handle SharePoint /:x:/g/ or /:x:/s/ or /:x:/r/ sharing links
+      try {
+        const spShareUrl = new URL(cleanUrl);
+        if (!embedUrl) {
+          const spEmbed = new URL(cleanUrl);
+          spEmbed.searchParams.set('action', 'embedview');
+          spEmbed.searchParams.set('wdAllowInteractivity', 'True');
+          embedUrl = spEmbed.toString();
+        }
+        const spDownload = new URL(cleanUrl);
+        spDownload.searchParams.set('download', '1');
+        downloadCandidates.unshift(spDownload.toString());
+
+        if (!officeViewerUrl) {
+          officeViewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
+            spDownload.toString()
+          )}`;
+        }
+      } catch {
+        // ignore URL parse error
+      }
+    }
+
+    // Fallback download candidates with &download=1
+    try {
+      const rUrl = new URL(resolvedUrl);
+      rUrl.searchParams.set('download', '1');
+      if (!downloadCandidates.includes(rUrl.toString())) {
+        downloadCandidates.push(rUrl.toString());
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!officeViewerUrl && downloadCandidates.length > 0) {
+      officeViewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
+        downloadCandidates[0]
+      )}`;
+    }
+
+    return {
+      cleanUrl,
+      provider: 'excel',
+      resolvedUrl,
+      embedUrl: embedUrl || officeViewerUrl || cleanUrl,
+      officeViewerUrl,
+      downloadCandidates: Array.from(new Set(downloadCandidates))
+    };
+  }
+
+  // 3. RAW CSV OR OTHER URL
+  return {
+    cleanUrl,
+    provider,
+    resolvedUrl: cleanUrl,
+    embedUrl: cleanUrl,
+    officeViewerUrl: '',
+    downloadCandidates: [cleanUrl]
+  };
+}
+
+function parseExcelWorkbookBuffer(buffer: Buffer): {
+  headers: string[];
+  rows: string[][];
+  sheets: SheetWorksheet[];
+  activeSheetName?: string;
+} {
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+  const sheets: SheetWorksheet[] = [];
+
+  for (const name of workbook.SheetNames) {
+    const ws = workbook.Sheets[name];
+    if (!ws) continue;
+    const rawMatrix = XLSX.utils.sheet_to_json<any[]>(ws, {
+      header: 1,
+      defval: '',
+      raw: false
+    });
+
+    const cleanedMatrix = rawMatrix
+      .map((row) => (Array.isArray(row) ? row.map((cell) => (cell === null || cell === undefined ? '' : String(cell).trim())) : []))
+      .filter((row) => row.some((cell) => cell !== ''));
+
+    if (cleanedMatrix.length > 0) {
+      const headers = cleanedMatrix[0];
+      const rows = cleanedMatrix.slice(1);
+      sheets.push({ name, headers, rows });
+    } else {
+      sheets.push({ name, headers: [], rows: [] });
     }
   }
 
-  const response = await fetch(exportUrl, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/csv,text/plain,*/*'
-    },
-    redirect: 'follow'
-  });
+  const firstNonEmpty = sheets.find((s) => s.headers.length > 0) || sheets[0];
+  return {
+    headers: firstNonEmpty?.headers || [],
+    rows: firstNonEmpty?.rows || [],
+    sheets,
+    activeSheetName: firstNonEmpty?.name
+  };
+}
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Google Sheet: ${response.status} ${response.statusText}. Please verify the sheet is shared as "Anyone with the link can view".`);
+async function fetchSpreadsheetData(sheetUrl: string): Promise<{
+  url: string;
+  provider: 'google' | 'excel' | 'csv' | 'unknown';
+  resolvedUrl: string;
+  embedUrl: string;
+  officeViewerUrl: string;
+  headers: string[];
+  rows: string[][];
+  sheets?: SheetWorksheet[];
+  activeSheetName?: string;
+}> {
+  const meta = await resolveSpreadsheetMetadata(sheetUrl);
+  if (!meta.cleanUrl) {
+    return {
+      url: '',
+      provider: 'unknown',
+      resolvedUrl: '',
+      embedUrl: '',
+      officeViewerUrl: '',
+      headers: [],
+      rows: []
+    };
   }
-  const csvText = await response.text();
-  const parsed = parseCSV(csvText);
-  if (!parsed || parsed.length === 0) {
-    return { headers: [], rows: [] };
+
+  // Google Sheets & CSV text path
+  if (meta.provider === 'google' || meta.provider === 'csv') {
+    const targetUrl = meta.downloadCandidates[0] || meta.cleanUrl;
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': BROWSER_UA,
+        'Accept': 'text/csv,text/plain,*/*'
+      },
+      redirect: 'follow'
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch spreadsheet (${response.status} ${response.statusText}). Please verify the link is shared as "Anyone with the link can view".`
+      );
+    }
+
+    const csvText = await response.text();
+    if (csvText.trim().toLowerCase().startsWith('<!doctype html') || csvText.trim().toLowerCase().startsWith('<html')) {
+      throw new Error(
+        'Google returned a login or HTML page instead of spreadsheet data. Please set sharing to "Anyone with the link can view".'
+      );
+    }
+
+    const parsed = parseCSV(csvText);
+    const headers = parsed[0] || [];
+    const rows = parsed.slice(1);
+    return {
+      url: meta.cleanUrl,
+      provider: meta.provider,
+      resolvedUrl: meta.resolvedUrl,
+      embedUrl: meta.embedUrl,
+      officeViewerUrl: meta.officeViewerUrl,
+      headers,
+      rows,
+      sheets: [{ name: 'Sheet1', headers, rows }],
+      activeSheetName: 'Sheet1'
+    };
   }
-  const headers = parsed[0];
-  const rows = parsed.slice(1);
-  return { headers, rows };
+
+  // Microsoft Excel Online / binary .xlsx path
+  let lastErrorMsg = '';
+  for (const candidateUrl of meta.downloadCandidates) {
+    try {
+      const response = await fetch(candidateUrl, {
+        headers: {
+          'User-Agent': BROWSER_UA,
+          'Accept':
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,*/*'
+        },
+        redirect: 'follow'
+      });
+
+      if (!response.ok) {
+        lastErrorMsg = `HTTP ${response.status} ${response.statusText}`;
+        continue;
+      }
+
+      const contentType = (response.headers.get('content-type') || '').toLowerCase();
+      const arrayBuf = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuf);
+
+      if (buffer.length === 0) {
+        lastErrorMsg = 'Empty response received from Microsoft server.';
+        continue;
+      }
+
+      // Detect HTML login/error pages returned instead of the .xlsx file
+      const headSnippet = buffer.subarray(0, 512).toString('utf8').trim().toLowerCase();
+      if (
+        contentType.includes('text/html') ||
+        headSnippet.startsWith('<!doctype html') ||
+        headSnippet.startsWith('<html')
+      ) {
+        lastErrorMsg =
+          'Microsoft returned a web/sign-in page instead of the Excel workbook file. Verify sharing is set to "Anyone with the link can view" without sign-in required.';
+        continue;
+      }
+
+      // Check if CSV text
+      if (contentType.includes('text/csv') || candidateUrl.toLowerCase().includes('.csv')) {
+        const parsedCsv = parseCSV(buffer.toString('utf8'));
+        const headers = parsedCsv[0] || [];
+        const rows = parsedCsv.slice(1);
+        return {
+          url: meta.cleanUrl,
+          provider: meta.provider,
+          resolvedUrl: meta.resolvedUrl,
+          embedUrl: meta.embedUrl,
+          officeViewerUrl: meta.officeViewerUrl,
+          headers,
+          rows,
+          sheets: [{ name: 'Sheet1', headers, rows }],
+          activeSheetName: 'Sheet1'
+        };
+      }
+
+      // Parse Excel (.xlsx/.xls/.ods) binary workbook via SheetJS
+      const parsedWorkbook = parseExcelWorkbookBuffer(buffer);
+      return {
+        url: meta.cleanUrl,
+        provider: meta.provider,
+        resolvedUrl: meta.resolvedUrl,
+        embedUrl: meta.embedUrl,
+        officeViewerUrl: meta.officeViewerUrl,
+        headers: parsedWorkbook.headers,
+        rows: parsedWorkbook.rows,
+        sheets: parsedWorkbook.sheets,
+        activeSheetName: parsedWorkbook.activeSheetName
+      };
+    } catch (err: any) {
+      lastErrorMsg = err.message || 'Network error fetching Excel file';
+    }
+  }
+
+  throw new Error(
+    lastErrorMsg ||
+      'Unable to download Excel workbook from this link. Ensure Microsoft Excel / OneDrive sharing is set to "Anyone with the link can view".'
+  );
 }
 
 // Get Sheet Data (cached or live fetched)
@@ -1265,12 +1742,18 @@ app.get('/api/sheet', async (req: Request, res: Response) => {
       return res.json(db.sheetData || { url: '', lastSyncedAt: null, headers: [], rows: [] });
     }
 
-    const { headers, rows } = await fetchGoogleSheetCSV(url);
+    const fetched = await fetchSpreadsheetData(url);
     db.sheetData = {
-      url,
+      url: fetched.url,
+      provider: fetched.provider,
+      resolvedUrl: fetched.resolvedUrl,
+      embedUrl: fetched.embedUrl,
+      officeViewerUrl: fetched.officeViewerUrl,
       lastSyncedAt: Date.now(),
-      headers,
-      rows
+      headers: fetched.headers,
+      rows: fetched.rows,
+      sheets: fetched.sheets,
+      activeSheetName: fetched.activeSheetName
     };
     saveDatabase(db);
     res.json(db.sheetData);
@@ -1279,51 +1762,103 @@ app.get('/api/sheet', async (req: Request, res: Response) => {
     if (db.sheetData) {
       return res.json(db.sheetData);
     }
-    res.status(500).json({ error: err.message || 'Failed to fetch Google Sheet data' });
+    res.status(500).json({ error: err.message || 'Failed to fetch spreadsheet data' });
   }
 });
 
-// Update Sheet URL
-app.post('/api/sheet/url', (req: Request, res: Response) => {
-  const { url } = req.body || {};
-  const cleanedUrl = typeof url === 'string' ? url.trim() : '';
+// Resolve Spreadsheet Link Metadata (supports Google Sheets & Microsoft Excel Online)
+app.post('/api/sheet/resolve', async (req: Request, res: Response) => {
+  try {
+    const rawUrl = typeof req.body?.url === 'string' ? req.body.url : '';
+    const meta = await resolveSpreadsheetMetadata(rawUrl);
+    res.json({ success: true, ...meta });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to resolve spreadsheet link' });
+  }
+});
 
-  if (!db.sheetData) {
+// Update Sheet URL (normalizes iframe snippets, resolves Excel/Google embed links)
+app.post('/api/sheet/url', async (req: Request, res: Response) => {
+  const { url } = req.body || {};
+  const cleanedUrl = normalizeSpreadsheetInput(typeof url === 'string' ? url : '');
+
+  if (!cleanedUrl) {
     db.sheetData = {
-      url: cleanedUrl,
+      url: '',
+      provider: 'unknown',
+      embedUrl: '',
+      officeViewerUrl: '',
+      resolvedUrl: '',
       lastSyncedAt: null,
       headers: [],
-      rows: []
+      rows: [],
+      sheets: [],
+      activeSheetName: undefined
     };
-  } else {
-    db.sheetData.url = cleanedUrl;
+    saveDatabase(db);
+    broadcastUpdate('sheet_updated', db.sheetData);
+    return res.json({ success: true, sheetData: db.sheetData });
   }
+
+  let meta = {
+    cleanUrl: cleanedUrl,
+    provider: detectSpreadsheetProvider(cleanedUrl),
+    resolvedUrl: cleanedUrl,
+    embedUrl: '',
+    officeViewerUrl: ''
+  };
+  try {
+    const resolved = await resolveSpreadsheetMetadata(cleanedUrl);
+    meta = resolved;
+  } catch {
+    // Keep basic fallback
+  }
+
+  db.sheetData = {
+    url: meta.cleanUrl,
+    provider: meta.provider,
+    resolvedUrl: meta.resolvedUrl,
+    embedUrl: meta.embedUrl,
+    officeViewerUrl: meta.officeViewerUrl,
+    lastSyncedAt: db.sheetData?.url === meta.cleanUrl ? db.sheetData.lastSyncedAt : null,
+    headers: db.sheetData?.url === meta.cleanUrl ? db.sheetData.headers : [],
+    rows: db.sheetData?.url === meta.cleanUrl ? db.sheetData.rows : [],
+    sheets: db.sheetData?.url === meta.cleanUrl ? db.sheetData.sheets : [],
+    activeSheetName: db.sheetData?.url === meta.cleanUrl ? db.sheetData.activeSheetName : undefined
+  };
 
   saveDatabase(db);
   broadcastUpdate('sheet_updated', db.sheetData);
   res.json({ success: true, sheetData: db.sheetData });
 });
 
-// Force Sync from Google Sheet
+// Force Sync from Google Sheet or Microsoft Excel Online
 app.post('/api/sheet/sync', async (req: Request, res: Response) => {
   try {
-    const url = (req.body?.url ?? db.sheetData?.url ?? '').trim();
+    const rawUrl = (req.body?.url ?? db.sheetData?.url ?? '').trim();
+    const url = normalizeSpreadsheetInput(rawUrl);
     if (!url) {
-      return res.status(400).json({ error: 'No Google Sheet link provided. Please paste and save your Google Sheet link first.' });
+      return res.status(400).json({ error: 'No spreadsheet link provided. Please paste and save your link first.' });
     }
-    const { headers, rows } = await fetchGoogleSheetCSV(url);
+    const fetched = await fetchSpreadsheetData(url);
     db.sheetData = {
-      url,
+      url: fetched.url,
+      provider: fetched.provider,
+      resolvedUrl: fetched.resolvedUrl,
+      embedUrl: fetched.embedUrl,
+      officeViewerUrl: fetched.officeViewerUrl,
       lastSyncedAt: Date.now(),
-      headers,
-      rows
+      headers: fetched.headers,
+      rows: fetched.rows,
+      sheets: fetched.sheets,
+      activeSheetName: fetched.activeSheetName
     };
     saveDatabase(db);
     broadcastUpdate('sheet_updated', db.sheetData);
     res.json({ success: true, sheetData: db.sheetData });
   } catch (err: any) {
-    console.error('Error syncing Google Sheet:', err);
-    res.status(500).json({ error: err.message || 'Failed to sync Google Sheet' });
+    console.error('Error syncing spreadsheet:', err);
+    res.status(500).json({ error: err.message || 'Failed to sync spreadsheet' });
   }
 });
 

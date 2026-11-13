@@ -305,6 +305,20 @@ export default function App() {
     }, 450);
   };
 
+  const handleExamExit = () => {
+    setTransitionLoading({
+      active: true,
+      message: 'Exiting Examination Session...',
+      subtext: 'Returning to examination room dashboard'
+    });
+    setTimeout(() => {
+      setActiveAttempt(null);
+      setCompletedResult(null);
+      loadData();
+      setTransitionLoading(null);
+    }, 400);
+  };
+
   const handleReturnFromResult = () => {
     setTransitionLoading({
       active: true,
@@ -344,6 +358,7 @@ export default function App() {
           room={currentRoom}
           attempt={activeAttempt}
           onFinish={handleExamFinish}
+          onExit={handleExamExit}
         />
       );
     }

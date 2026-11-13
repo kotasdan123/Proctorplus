@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ExamRoom, ExamAttempt } from '../types';
-import { Clock, ShieldAlert, AlertTriangle, CheckCircle2, RotateCw, Send, Maximize2, Shield } from 'lucide-react';
+import { Clock, ShieldAlert, AlertTriangle, CheckCircle2, RotateCw, Send, Maximize2, Shield, LogOut } from 'lucide-react';
 import { recordViolation, updateAttempt } from '../lib/api';
 import { ExamCalculator } from './ExamCalculator';
 
@@ -13,9 +13,13 @@ interface LiveExamViewProps {
     durationSeconds: number;
     terminationReason?: string;
   }) => void;
+  onExit?: (result: {
+    violations: number;
+    durationSeconds: number;
+  }) => void;
 }
 
-export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFinish }) => {
+export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFinish, onExit }) => {
   const effectiveMaxViolations = Math.max(
     1,
     Number(room.maxViolations) || Number(attempt.maxViolations) || 5
@@ -38,7 +42,9 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
   });
 
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+  const [confirmExitOpen, setConfirmExitOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   const [formKey, setFormKey] = useState<number>(Date.now());
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -169,6 +175,34 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
     await exitFullscreen();
     onFinish({ status, violations: violationsCount, durationSeconds, terminationReason: reason });
   }, [attempt.id, violationsCount, effectiveMaxViolations, onFinish, exitFullscreen]);
+
+  // Handle manual early exit from examination session
+  const handleExitSession = useCallback(async () => {
+    if (isFinishedRef.current) return;
+    isFinishedRef.current = true;
+    setIsExiting(true);
+
+    const durationSeconds = Math.max(0, Math.round((Date.now() - startTimeRef.current) / 1000));
+
+    try {
+      await updateAttempt(attempt.id, {
+        status: 'Exited',
+        endedAt: Date.now(),
+        durationSeconds,
+        violations: violationsCount,
+        flagged: violationsCount >= effectiveMaxViolations
+      });
+    } catch (err) {
+      console.error('Error recording early exit:', err);
+    }
+
+    await exitFullscreen();
+    if (onExit) {
+      onExit({ violations: violationsCount, durationSeconds });
+    } else {
+      onFinish({ status: 'Completed', violations: violationsCount, durationSeconds });
+    }
+  }, [attempt.id, violationsCount, effectiveMaxViolations, onExit, onFinish, exitFullscreen]);
 
   // Request fullscreen on start
   useEffect(() => {
@@ -408,6 +442,17 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
             <span>Refresh Form</span>
           </button>
 
+          {/* Exit Session Button */}
+          <button
+            type="button"
+            onClick={() => setConfirmExitOpen(true)}
+            title="Exit Examination Session"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 rounded-xl text-xs font-semibold text-slate-300 hover:text-red-300 transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Exit</span>
+          </button>
+
           {/* Submit Exam Button */}
           <button
             type="button"
@@ -569,6 +614,44 @@ export const LiveExamView: React.FC<LiveExamViewProps> = ({ room, attempt, onFin
                 className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 transition-all"
               >
                 {isSubmitting ? 'Finalizing...' : 'Yes, Submit Exam'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal to Exit Session */}
+      {confirmExitOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-amber-500/40 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto mb-3">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-bold text-white text-center mb-1.5">
+              Are you sure you want to exit the session?
+            </h3>
+            <p className="text-xs text-slate-400 text-center mb-5 leading-relaxed">
+              Leaving now will end your current examination session and return you to the room lobby. Any unsaved answers not submitted inside the form will not be recorded.
+            </p>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={isExiting}
+                onClick={() => setConfirmExitOpen(false)}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                Return to Exam
+              </button>
+              <button
+                type="button"
+                disabled={isExiting}
+                onClick={handleExitSession}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-600/20 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>{isExiting ? 'Exiting...' : 'Yes, Exit Session'}</span>
               </button>
             </div>
           </div>

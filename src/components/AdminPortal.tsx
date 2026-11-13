@@ -123,7 +123,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       dashboard: 'Switching to Overview Dashboard...',
       rooms: 'Loading Examination Rooms...',
       submissions: 'Loading Examinee Submissions...',
-      sheet: 'Opening Live Google Sheet Board in Analytics...',
+      sheet: 'Opening Live Spreadsheet Board in Analytics...',
       violations: 'Loading Security Violations Log...',
       analytics: 'Computing Examination Analytics...',
       settings: 'Loading Portal Security & Cloud Config...'
@@ -624,6 +624,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                   ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                                   : attempt.status === 'Time Expired'
                                   ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                  : attempt.status === 'Exited'
+                                  ? 'bg-slate-800 text-slate-300 border border-slate-700'
                                   : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                               }`}>
                                 {attempt.status === 'Terminated' ? 'Ejected' : attempt.status}
@@ -982,6 +984,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <option value="ALL">All Statuses</option>
                     <option value="In Progress">In Progress</option>
                     <option value="Completed">Completed</option>
+                    <option value="Exited">Exited</option>
+                    <option value="Terminated">Terminated</option>
                     <option value="Time Expired">Time Expired</option>
                   </select>
                 </div>
@@ -1095,6 +1099,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                     ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                                     : attempt.status === 'Time Expired'
                                     ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    : attempt.status === 'Exited'
+                                    ? 'bg-slate-800 text-slate-300 border border-slate-700'
                                     : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                 }`}>
                                   {attempt.status === 'Terminated' ? 'Ejected / Terminated' : attempt.status}
@@ -1326,7 +1332,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <div>
                   <h1 className="text-2xl font-bold text-white">Examination Analytics</h1>
                   <p className="text-xs text-slate-400 mt-1">
-                    High-level breakdown of examinee completion outcomes, room distribution, and live response sheets.
+                    High-level breakdown of examinee completion outcomes, room distribution, and live spreadsheets (Google Sheets &amp; Microsoft Excel Online).
                   </p>
                 </div>
 
@@ -1355,7 +1361,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     }`}
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Google Sheet Data Board</span>
+                    <span>Spreadsheet</span>
                   </button>
                 </div>
               </div>
